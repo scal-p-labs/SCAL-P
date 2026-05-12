@@ -1,4 +1,4 @@
-.PHONY: build test clean release-test fmt tidy help
+.PHONY: build test clean release-test fmt tidy help e2e
 
 BINARY_NAME=scal-p
 BIN_DIR=.bin
@@ -16,10 +16,15 @@ build:
 		-o $(BIN_DIR)/$(BINARY_NAME) $(MAIN_PATH)
 	@echo "Binary created at $(BIN_DIR)/$(BINARY_NAME)"
 
-## test: run all tests
+## test: run all unit tests
 test:
-	@echo "Running tests..."
+	@echo "Running unit tests..."
 	go test -v ./...
+
+## e2e: run end-to-end tests (requires npm)
+e2e:
+	@echo "Running end-to-end tests..."
+	go test -v -tags=e2e -count=1 ./cmd/scalp
 
 ## release-test: test goreleaser snapshot
 release-test:

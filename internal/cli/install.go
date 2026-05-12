@@ -62,7 +62,7 @@ func runInstall(args []string) error {
 	}
 
 	if mode == policy.ModeGuarded {
-		if err := npm.ResolveViaPackageLockOnly(ctx); err != nil {
+		if err := npm.ResolveViaPackageLockOnly(ctx, pmArgs...); err != nil {
 			return err
 		}
 
