@@ -75,12 +75,13 @@ func ParsePackageLock(ctx context.Context, path string) ([]PackageNode, error) {
 }
 
 // ResolveViaPackageLockOnly resolves dependencies without installing.
-func ResolveViaPackageLockOnly(ctx context.Context) error {
+func ResolveViaPackageLockOnly(ctx context.Context, args ...string) error {
 	if err := ctxutil.Check(ctx); err != nil {
 		return err
 	}
 
-	cmd := execCommand(ctx, "npm", "install", "--package-lock-only")
+	cmdArgs := append([]string{"install", "--package-lock-only"}, args...)
+	cmd := execCommand(ctx, "npm", cmdArgs...)
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("npm install --package-lock-only failed: %w", err)
