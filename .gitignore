@@ -1,3 +1,4 @@
 /scalp
 *.exe
 node_modules/
+dist/
