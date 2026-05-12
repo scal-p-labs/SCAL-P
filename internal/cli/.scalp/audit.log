@@ -18,3 +18,5 @@
 {"ts":"2026-05-12T17:49:06Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
 {"ts":"2026-05-12T17:53:52Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
 {"ts":"2026-05-12T17:53:53Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
+{"ts":"2026-05-12T18:06:11Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
+{"ts":"2026-05-12T18:06:12Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
