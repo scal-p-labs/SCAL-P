@@ -1,5 +1,7 @@
 # SCAL-P (PoC v0.1)
 
+> This active development PoC is not production-ready. Expect breaking changes and security issues. Use at your own risk.
+
 Secure Chain Assurance Layer for Packages. Policy, hashing, and audit log for npm.
 
 Zero external dependencies — only the Go standard library.
@@ -7,7 +9,7 @@ Zero external dependencies — only the Go standard library.
 ## Build
 
 ```bash
-go build -o scalp ./cmd/scalp
+make build # build: .bin/scalp
 ```
 
 ## Usage

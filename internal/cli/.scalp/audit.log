@@ -22,3 +22,5 @@
 {"ts":"2026-05-12T18:06:12Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
 {"ts":"2026-05-12T18:15:53Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
 {"ts":"2026-05-12T18:15:54Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
+{"ts":"2026-05-12T18:30:55Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
+{"ts":"2026-05-12T18:30:56Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
