@@ -1,0 +1,16 @@
+{
+  "lockfileVersion": 3,
+  "packages": {
+    "": {"name": "test", "version": "1.0"},
+    "node_modules/lodash": {
+      "version": "4.17.21",
+      "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz",
+      "integrity": "sha512-v2kDEe57lecTulaDIuNTPy3Ry4gLGJ6Z1O3vE1krgXZNrsQ+LFTGHVxVjcXPs17LhbZbGbkvujbs3jTvOk8Qg=="
+    },
+    "node_modules/is-odd": {
+      "version": "3.0.1",
+      "resolved": "https://registry.npmjs.org/is-odd/-/is-odd-3.0.1.tgz",
+      "integrity": "sha512-9iI+Qp3kR+JnsS2OWn8QYHfy9+4JmRgGAXJ+fKrWg0EkC+b4Qt2I2+oUYg8N3c9DABioDe2FWJRRT3+eQ5hQQ=="
+    }
+  }
+}
