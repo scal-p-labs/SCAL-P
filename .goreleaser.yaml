@@ -1,0 +1,46 @@
+version: 2
+
+project_name: scalp
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: scalp
+    main: ./cmd/scalp
+    binary: scalp
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X scal-p/internal/version.Version={{.Version}} -X scal-p/internal/version.Commit={{.Commit}} -X scal-p/internal/version.Date={{.Date}}
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: default
+    format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  name_template: "{{ .Tag }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
