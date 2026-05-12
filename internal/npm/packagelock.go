@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -58,6 +57,9 @@ func ParsePackageLock(ctx context.Context, path string) ([]PackageNode, error) {
 		}
 
 		name := extractName(pkgPath)
+		if name == "" || isPathTraversal(name) {
+			continue
+		}
 		depth := countNodeModules(pkgPath)
 
 		nodes = append(nodes, PackageNode{
@@ -78,7 +80,7 @@ func ResolveViaPackageLockOnly(ctx context.Context) error {
 		return err
 	}
 
-	cmd := exec.CommandContext(ctx, "npm", "install", "--package-lock-only")
+	cmd := execCommand(ctx, "npm", "install", "--package-lock-only")
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("npm install --package-lock-only failed: %w", err)
@@ -103,6 +105,16 @@ func extractName(pkgPath string) string {
 	}
 	parts := strings.Split(trimmed, "/")
 	return parts[0]
+}
+
+// isPathTraversal checks if a package name could be a path traversal attack.
+func isPathTraversal(name string) bool {
+	for _, part := range strings.Split(name, "/") {
+		if part == ".." || part == "." {
+			return true
+		}
+	}
+	return false
 }
 
 func countNodeModules(pkgPath string) int {

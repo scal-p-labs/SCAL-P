@@ -236,6 +236,55 @@ func TestEvaluate_edgeCases(t *testing.T) {
 	})
 }
 
+// ──────────────────────────────────────────────
+// Adversarial scenarios for Evaluate
+// ──────────────────────────────────────────────
+
+func TestEvaluate_duplicateVersions(t *testing.T) {
+	pol := policy.DefaultPolicy()
+	pol.Trust.Mode = policy.TrustDenylist
+	pol.Packages.Deny = []policy.PackageRule{
+		{Name: "lodash"},
+	}
+
+	nodes := []npm.PackageNode{
+		{Name: "lodash", Version: "4.17.21", Depth: 0},
+		{Name: "lodash", Version: "3.10.1", Depth: 1},
+	}
+
+	violations, err := policy.Evaluate(pol, nodes)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(violations) != 2 {
+		t.Errorf("expected 2 violations (one per version), got %d: %+v", len(violations), violations)
+	}
+}
+
+func TestEvaluate_denylistBlocksMultiplePatterns(t *testing.T) {
+	pol := policy.DefaultPolicy()
+	pol.Trust.Mode = policy.TrustDenylist
+	pol.Packages.Deny = []policy.PackageRule{
+		{Name: "a"},
+		{Name: "b"},
+		{Pattern: "*-evil"},
+	}
+
+	nodes := []npm.PackageNode{
+		{Name: "a", Version: "1.0", Depth: 0},
+		{Name: "b", Version: "2.0", Depth: 1},
+		{Name: "c-evil", Version: "3.0", Depth: 2},
+		{Name: "safe", Version: "1.0", Depth: 0},
+	}
+
+	violations, err := policy.Evaluate(pol, nodes)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(violations) != 3 {
+		t.Errorf("expected 3 violations (a, b, c-evil), got %d: %+v", len(violations), violations)
+	}
+}
 func TestApplyEnforcement(t *testing.T) {
 	violations := []policy.Violation{{PackageID: "evil@1.0", Reason: "denylist_match", Rule: "name:evil"}}
 

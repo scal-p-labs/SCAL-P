@@ -11,6 +11,21 @@ import (
 	"scal-p/internal/ctxutil"
 )
 
+// execCommand is the function used to create external commands.
+// Override in tests to mock command execution.
+var execCommand = exec.CommandContext
+
+// ExecFunc matches the signature of exec.CommandContext.
+type ExecFunc func(ctx context.Context, name string, arg ...string) *exec.Cmd
+
+// SetExecCommand overrides the command factory for testing.
+// Returns the previous function for restore.
+func SetExecCommand(fn ExecFunc) ExecFunc {
+	old := execCommand
+	execCommand = fn
+	return old
+}
+
 // DependencyTree models the npm ls --json output.
 type DependencyTree struct {
 	Name         string                   `json:"name"`
@@ -58,7 +73,7 @@ func GetDependencyTree(ctx context.Context, pm string) (DependencyTree, error) {
 	if pm != "npm" {
 		return DependencyTree{}, fmt.Errorf("dependency tree not supported for %s in v0.1", pm)
 	}
-	cmd := exec.CommandContext(ctx, pm, "ls", "--all", "--json")
+	cmd := execCommand(ctx, pm, "ls", "--all", "--json")
 	cmd.Stderr = os.Stderr
 	output, err := cmd.Output()
 	if err != nil {
@@ -81,7 +96,7 @@ func RunInstall(ctx context.Context, pm string, args []string) error {
 		return fmt.Errorf("unsupported package manager: %s", pm)
 	}
 	cmdArgs := append([]string{"install"}, args...)
-	cmd := exec.CommandContext(ctx, pm, cmdArgs...)
+	cmd := execCommand(ctx, pm, cmdArgs...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin

@@ -12,3 +12,9 @@
 {"ts":"2026-05-12T17:35:45Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
 {"ts":"2026-05-12T17:37:24Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
 {"ts":"2026-05-12T17:37:24Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
+{"ts":"2026-05-12T17:48:44Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
+{"ts":"2026-05-12T17:48:45Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
+{"ts":"2026-05-12T17:49:06Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
+{"ts":"2026-05-12T17:49:06Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
+{"ts":"2026-05-12T17:53:52Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
+{"ts":"2026-05-12T17:53:53Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
