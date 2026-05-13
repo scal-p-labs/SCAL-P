@@ -27,3 +27,22 @@ jobs:
           args: release --clean --config .goreleaser.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build scalp bootstrap for dogfooding
+        run: go build -o /tmp/scalp-bootstrap ./cmd/scalp
+
+      - name: Generate checksums with scalp
+        run: |
+          /tmp/scalp-bootstrap checksum dist/*.tar.gz dist/*.zip > dist/checksums.txt
+
+      - name: Verify all artifacts with scalp
+        run: |
+          for f in dist/*.tar.gz dist/*.zip; do
+            echo "Verifying $(basename $f)..."
+            /tmp/scalp-bootstrap verify --artifact "$f" --checksum dist/checksums.txt --ci
+          done
+
+      - name: Upload scalp checksums to release
+        run: gh release upload "${{ github.ref_name }}" dist/checksums.txt --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

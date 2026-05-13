@@ -26,10 +26,21 @@ e2e:
 	@echo "Running end-to-end tests..."
 	go test -v -tags=e2e -count=1 ./cmd/scalp
 
-## release-test: test goreleaser snapshot
+## release-test: test goreleaser snapshot + dogfooding
 release-test:
-	@echo "Testing GoReleaser snapshot..."
+	@echo "Building scalp bootstrap..."
+	go build -o /tmp/scalp-bootstrap ./cmd/scalp
+	@echo "Running GoReleaser snapshot..."
 	goreleaser release --snapshot --clean --config .goreleaser.yaml
+	@echo "=== Dogfooding: generating checksums ==="
+	/tmp/scalp-bootstrap checksum dist/*.tar.gz dist/*.zip > dist/checksums.txt
+	cat dist/checksums.txt
+	@echo "=== Dogfooding: verifying artifacts ==="
+	for f in dist/*.tar.gz dist/*.zip; do \
+		echo "Verifying $$(basename $$f)..."; \
+		/tmp/scalp-bootstrap verify --artifact "$$f" --checksum dist/checksums.txt --ci; \
+	done
+	@echo "=== Dogfooding: all artifacts verified ==="
 
 fmt:
 	@echo "Formatting code..."
