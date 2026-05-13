@@ -75,7 +75,9 @@ func runCi(args []string) error {
 
 	if pol.Trust.MinScore > 0 || pol.Trust.RequireHash {
 		lf, lfErr := lockfile.Load(ctxBg, ".scalp/lockfile.json")
-		if lfErr == nil {
+		if lfErr != nil {
+			slog.Warn("trust score: no lockfile, using offline-only factors", "err", lfErr)
+		} else {
 			scorer := trust.NewScorer(trust.DefaultCacheFile)
 			trustVs, tvErr := scorer.Evaluate(ctxBg, pol, nodes, &lf)
 			if tvErr != nil {
