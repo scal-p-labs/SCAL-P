@@ -36,6 +36,10 @@ func Run(args []string) error {
 		return runAudit(args[1:])
 	case "ci":
 		return runCi(args[1:])
+	case "verify":
+		return runVerify(args[1:])
+	case "checksum":
+		return runChecksum(args[1:])
 	case "policy":
 		return runPolicy(args[1:])
 	case "help", "-h", "--help":
@@ -58,12 +62,16 @@ Usage:
   scalp install [flags] [--] [pm args...]
   scalp audit [flags]
   scalp policy check [flags]
+  scalp verify --artifact <file> --checksum <file> [flags]
+  scalp checksum [--output <file>] <files...>
 
 Commands:
   ci            resolve, evaluate, install, audit — single CI step (always blocks)
   install       install packages via npm/pnpm with optional enforcement
   audit         validate lockfile vs node_modules
   policy check  evaluate policy without installing
+  verify        verify release artifact against checksums file
+  checksum      generate SHA-512 checksums for files
 
 Global flags:
   --pm string       package manager: npm|pnpm (default "npm")
