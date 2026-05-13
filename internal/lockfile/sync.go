@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"scal-p/internal/audit"
+	"scal-p/internal/ctxutil"
 	"scal-p/internal/hash"
 	"scal-p/internal/pkgmanager"
 	"scal-p/internal/policy"
@@ -18,6 +19,9 @@ func SyncWithTree(ctx context.Context, lf *Lockfile, tree pkgmanager.DependencyT
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	for _, node := range nodes {
+		if err := ctxutil.Check(ctx); err != nil {
+			return nil, err
+		}
 		pkgDir := node.Path
 		if pkgDir == "" {
 			pkgDir = pm.LocalPath(node.Name)
@@ -64,6 +68,9 @@ func VerifyAgainstTree(ctx context.Context, lf *Lockfile, tree pkgmanager.Depend
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	for _, node := range nodes {
+		if err := ctxutil.Check(ctx); err != nil {
+			return nil, nil, err
+		}
 		key := fmt.Sprintf("%s@%s", node.Name, node.Version)
 		entry, ok := lf.Packages[key]
 		if !ok {

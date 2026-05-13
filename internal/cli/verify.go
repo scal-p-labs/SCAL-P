@@ -33,9 +33,13 @@ func runVerify(args []string) error {
 	}
 
 	ctx := context.Background()
-	pol, _, err := policy.Load(ctx, *policyPath)
+	pol, polInfo, err := policy.Load(ctx, *policyPath)
 	if err != nil {
 		return err
+	}
+
+	if polInfo.MissingPolicy {
+		slog.Warn("policy not found; allowing with audit")
 	}
 
 	auditLogger := audit.NewLogger(".scalp/audit.log")
@@ -118,13 +122,16 @@ func parseChecksums(path string) (map[string]string, error) {
 
 	checksums := map[string]string{}
 	scanner := bufio.NewScanner(f)
+	lineNum := 0
 	for scanner.Scan() {
+		lineNum++
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
 		parts := strings.SplitN(line, "  ", 2)
 		if len(parts) != 2 {
+			slog.Warn("skipping malformed checksums line", "line", lineNum, "content", line)
 			continue
 		}
 		checksums[parts[1]] = parts[0]
