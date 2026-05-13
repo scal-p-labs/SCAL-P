@@ -51,7 +51,7 @@ type PackageManager interface {
 
 // Flatten converts a dependency tree into a flat list of PackageNode.
 func Flatten(tree DependencyTree) []PackageNode {
-	if tree.Dependencies == nil {
+	if len(tree.Dependencies) == 0 {
 		return nil
 	}
 	var nodes []PackageNode
@@ -78,7 +78,7 @@ func visitDeps(deps map[string]DependencyRef, depth int, nodes *[]PackageNode) {
 // IsSupported reports whether the package manager name is known.
 func IsSupported(pm string) bool {
 	switch pm {
-	case "npm", "pnpm", "yarn":
+	case "npm", "pnpm":
 		return true
 	default:
 		return false

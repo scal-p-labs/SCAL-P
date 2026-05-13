@@ -354,13 +354,38 @@ func TestResolve(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────
-// ParseLockfile
+// ParseLockfile (reads pnpm-lock.yaml directly)
 // ──────────────────────────────────────────────
 
 func TestParseLockfile(t *testing.T) {
-	t.Run("returns flat list", func(t *testing.T) {
-		output := `[{"name":"root","version":"1.0","dependencies":{"a":{"version":"1.0","dependencies":{"b":{"version":"2.0"}}}}}]`
-		mockExec(t, output, 0)
+	t.Run("basic packages", func(t *testing.T) {
+		dir := t.TempDir()
+		oldWd, _ := os.Getwd()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := os.Chdir(oldWd); err != nil {
+				t.Error(err)
+			}
+		}()
+
+		lockfile := `lockfileVersion: '9.0'
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+packages:
+  /lodash/4.17.21:
+    resolution: {integrity: sha512-v2kDEe57lecTulaDIuNTPy3Ry4gLGJ6Z1O3vE1krgXZNrsQ+LFTGHVxVjcXPs17LhbZVGedAJv8XZ1tvj5FvSg==}
+    engines: {node: '>=10'}
+    dev: false
+  /is-odd/3.0.1:
+    resolution: {integrity: sha512-9iEO4qS3oGdE7S9C1rf1XhBfFOrpZTYGy4m1b86N5yI4giR1cOIsfbXkG8N4qLGnZgsMziPD8kDS2YwN7HbQA==}
+    dev: false
+`
+		if err := os.WriteFile("pnpm-lock.yaml", []byte(lockfile), 0o644); err != nil {
+			t.Fatal(err)
+		}
 
 		a := &pnpm.Adapter{}
 		nodes, err := a.ParseLockfile(context.Background())
@@ -375,11 +400,186 @@ func TestParseLockfile(t *testing.T) {
 		for _, n := range nodes {
 			byName[n.Name] = n
 		}
-		if byName["a"].Depth != 0 {
-			t.Errorf("a: expected depth 0, got %d", byName["a"].Depth)
+
+		lodash, ok := byName["lodash"]
+		if !ok {
+			t.Fatal("missing lodash")
 		}
-		if byName["b"].Depth != 1 {
-			t.Errorf("b: expected depth 1, got %d", byName["b"].Depth)
+		if lodash.Version != "4.17.21" {
+			t.Errorf("lodash version: expected 4.17.21, got %s", lodash.Version)
+		}
+		if lodash.Integrity != "sha512-v2kDEe57lecTulaDIuNTPy3Ry4gLGJ6Z1O3vE1krgXZNrsQ+LFTGHVxVjcXPs17LhbZVGedAJv8XZ1tvj5FvSg==" {
+			t.Errorf("lodash integrity mismatch")
+		}
+		if lodash.Depth != 0 {
+			t.Errorf("expected depth 0, got %d", lodash.Depth)
+		}
+
+		odd, ok := byName["is-odd"]
+		if !ok {
+			t.Fatal("missing is-odd")
+		}
+		if odd.Version != "3.0.1" {
+			t.Errorf("is-odd version: expected 3.0.1, got %s", odd.Version)
+		}
+	})
+
+	t.Run("scoped package", func(t *testing.T) {
+		dir := t.TempDir()
+		oldWd, _ := os.Getwd()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := os.Chdir(oldWd); err != nil {
+				t.Error(err)
+			}
+		}()
+
+		lockfile := `lockfileVersion: '9.0'
+packages:
+  /@babel/code-frame/7.24.7:
+    resolution: {integrity: sha512-BcYH1CVJBO9tvyIZ2jVeXgSIMvGZ2FDRvDdOIVQyuklNKSsx+eppDEBq/g47Ayw+RqNFE+URvOShmf+f/qwAlA==}
+    dev: false
+`
+		if err := os.WriteFile("pnpm-lock.yaml", []byte(lockfile), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		a := &pnpm.Adapter{}
+		nodes, err := a.ParseLockfile(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(nodes) != 1 {
+			t.Fatalf("expected 1 node, got %d", len(nodes))
+		}
+		if nodes[0].Name != "@babel/code-frame" {
+			t.Errorf("expected @babel/code-frame, got %s", nodes[0].Name)
+		}
+		if nodes[0].Version != "7.24.7" {
+			t.Errorf("expected 7.24.7, got %s", nodes[0].Version)
+		}
+	})
+
+	t.Run("file not found", func(t *testing.T) {
+		dir := t.TempDir()
+		oldWd, _ := os.Getwd()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := os.Chdir(oldWd); err != nil {
+				t.Error(err)
+			}
+		}()
+
+		a := &pnpm.Adapter{}
+		_, err := a.ParseLockfile(context.Background())
+		if err == nil {
+			t.Fatal("expected error when pnpm-lock.yaml does not exist")
+		}
+	})
+
+	t.Run("empty packages section", func(t *testing.T) {
+		dir := t.TempDir()
+		oldWd, _ := os.Getwd()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := os.Chdir(oldWd); err != nil {
+				t.Error(err)
+			}
+		}()
+
+		lockfile := `lockfileVersion: '9.0'
+packages:
+`
+		if err := os.WriteFile("pnpm-lock.yaml", []byte(lockfile), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		a := &pnpm.Adapter{}
+		nodes, err := a.ParseLockfile(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(nodes) != 0 {
+			t.Errorf("expected 0 nodes, got %d", len(nodes))
+		}
+	})
+
+	t.Run("handles URL-encoded scoped package key", func(t *testing.T) {
+		dir := t.TempDir()
+		oldWd, _ := os.Getwd()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := os.Chdir(oldWd); err != nil {
+				t.Error(err)
+			}
+		}()
+
+		lockfile := `lockfileVersion: '9.0'
+packages:
+  /@scope%2Fname/1.0.0:
+    resolution: {integrity: sha512-test123==}
+    dev: false
+`
+		if err := os.WriteFile("pnpm-lock.yaml", []byte(lockfile), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		a := &pnpm.Adapter{}
+		nodes, err := a.ParseLockfile(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(nodes) != 1 {
+			t.Fatalf("expected 1 node, got %d", len(nodes))
+		}
+		if nodes[0].Name != "@scope/name" {
+			t.Errorf("expected @scope/name, got %s", nodes[0].Name)
+		}
+		if nodes[0].Version != "1.0.0" {
+			t.Errorf("expected 1.0.0, got %s", nodes[0].Version)
+		}
+	})
+
+	t.Run("no integrity field", func(t *testing.T) {
+		dir := t.TempDir()
+		oldWd, _ := os.Getwd()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := os.Chdir(oldWd); err != nil {
+				t.Error(err)
+			}
+		}()
+
+		lockfile := `lockfileVersion: '9.0'
+packages:
+  /simple/1.0.0:
+    engines: {node: '>=10'}
+    dev: false
+`
+		if err := os.WriteFile("pnpm-lock.yaml", []byte(lockfile), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		a := &pnpm.Adapter{}
+		nodes, err := a.ParseLockfile(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(nodes) != 1 {
+			t.Fatalf("expected 1 node, got %d", len(nodes))
+		}
+		if nodes[0].Integrity != "" {
+			t.Errorf("expected empty integrity, got %s", nodes[0].Integrity)
 		}
 	})
 }

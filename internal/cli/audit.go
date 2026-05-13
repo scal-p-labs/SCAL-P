@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"log/slog"
+	"strings"
 
 	"scal-p/internal/audit"
 	"scal-p/internal/lockfile"
@@ -22,6 +23,7 @@ func runAudit(args []string) error {
     }
     applyDefaults(cfg)
 
+    cfg.pm = strings.ToLower(cfg.pm)
 	pm, err := pkgmanager.Get(cfg.pm)
 	if err != nil {
 		return err
@@ -35,7 +37,9 @@ func runAudit(args []string) error {
 
 	auditLogger := audit.NewLogger(".scalp/audit.log")
 	defer func() {
-		_ = auditLogger.Close()
+		if err := auditLogger.Close(); err != nil {
+			slog.Warn("closing audit log", "err", err)
+		}
 	}()
 
     enforcement := pol.Enforcement.OnViolation
