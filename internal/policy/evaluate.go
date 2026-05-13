@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"scal-p/internal/npm"
+	"scal-p/internal/pkgmanager"
 )
 
 // Violation represents a policy violation.
@@ -15,7 +15,7 @@ type Violation struct {
 }
 
 // Evaluate validates a node list against the policy.
-func Evaluate(pol Policy, nodes []npm.PackageNode) ([]Violation, error) {
+func Evaluate(pol Policy, nodes []pkgmanager.PackageNode) ([]Violation, error) {
     if pol.Trust.Mode == TrustAuditOnly {
         return nil, nil
     }
@@ -57,7 +57,7 @@ func Evaluate(pol Policy, nodes []npm.PackageNode) ([]Violation, error) {
     return violations, nil
 }
 
-func matchesAllow(rules []PackageRule, node npm.PackageNode) bool {
+func matchesAllow(rules []PackageRule, node pkgmanager.PackageNode) bool {
     if len(rules) == 0 {
         return false
     }
@@ -76,7 +76,7 @@ func matchesAllow(rules []PackageRule, node npm.PackageNode) bool {
     return false
 }
 
-func matchesDeny(rules []PackageRule, node npm.PackageNode) (bool, string) {
+func matchesDeny(rules []PackageRule, node pkgmanager.PackageNode) (bool, string) {
     for _, rule := range rules {
         if rule.Name != "" {
             if matchName(rule.Name, node.Name) {

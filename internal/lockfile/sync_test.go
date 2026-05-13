@@ -8,6 +8,7 @@ import (
 
 	"scal-p/internal/lockfile"
 	"scal-p/internal/npm"
+	"scal-p/internal/pkgmanager"
 )
 
 func chdir(t *testing.T, dir string) string {
@@ -29,6 +30,11 @@ func restoreWd(t *testing.T, old string) {
 	}
 }
 
+// npmPM returns an npm adapter for use in tests.
+func npmPM() pkgmanager.PackageManager {
+	return &npm.Adapter{}
+}
+
 func TestSyncWithTree(t *testing.T) {
 	t.Run("syncs packages from tree", func(t *testing.T) {
 		dir := t.TempDir()
@@ -43,16 +49,16 @@ func TestSyncWithTree(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		tree := npm.DependencyTree{
+		tree := pkgmanager.DependencyTree{
 			Name:    "test",
 			Version: "1.0",
-			Dependencies: map[string]npm.DependencyRef{
+			Dependencies: map[string]pkgmanager.DependencyRef{
 				"mypkg": {Version: "1.0", Resolved: "https://example.com/mypkg.tgz"},
 			},
 		}
 
 		lf := newLockfile("")
-		events, err := lockfile.SyncWithTree(context.Background(), &lf, tree)
+		events, err := lockfile.SyncWithTree(context.Background(), &lf, tree, npmPM())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -76,16 +82,16 @@ func TestSyncWithTree(t *testing.T) {
 		old := chdir(t, dir)
 		defer restoreWd(t, old)
 
-		tree := npm.DependencyTree{
+		tree := pkgmanager.DependencyTree{
 			Name:    "test",
 			Version: "1.0",
-			Dependencies: map[string]npm.DependencyRef{
+			Dependencies: map[string]pkgmanager.DependencyRef{
 				"ghost": {Version: "2.0"},
 			},
 		}
 
 		lf := newLockfile("")
-		events, err := lockfile.SyncWithTree(context.Background(), &lf, tree)
+		events, err := lockfile.SyncWithTree(context.Background(), &lf, tree, npmPM())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -96,7 +102,7 @@ func TestSyncWithTree(t *testing.T) {
 
 	t.Run("empty tree", func(t *testing.T) {
 		lf := newLockfile("")
-		events, err := lockfile.SyncWithTree(context.Background(), &lf, npm.DependencyTree{})
+		events, err := lockfile.SyncWithTree(context.Background(), &lf, pkgmanager.DependencyTree{}, npmPM())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -120,20 +126,20 @@ func TestVerifyAgainstTree(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		tree := npm.DependencyTree{
+		tree := pkgmanager.DependencyTree{
 			Name:    "test",
 			Version: "1.0",
-			Dependencies: map[string]npm.DependencyRef{
+			Dependencies: map[string]pkgmanager.DependencyRef{
 				"pkg": {Version: "1.0"},
 			},
 		}
 
 		lf := newLockfile("")
-		if _, err := lockfile.SyncWithTree(context.Background(), &lf, tree); err != nil {
+		if _, err := lockfile.SyncWithTree(context.Background(), &lf, tree, npmPM()); err != nil {
 			t.Fatal(err)
 		}
 
-		violations, events, err := lockfile.VerifyAgainstTree(context.Background(), &lf, tree)
+		violations, events, err := lockfile.VerifyAgainstTree(context.Background(), &lf, tree, npmPM())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -158,16 +164,16 @@ func TestVerifyAgainstTree(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		tree := npm.DependencyTree{
+		tree := pkgmanager.DependencyTree{
 			Name:    "test",
 			Version: "1.0",
-			Dependencies: map[string]npm.DependencyRef{
+			Dependencies: map[string]pkgmanager.DependencyRef{
 				"unknown": {Version: "1.0"},
 			},
 		}
 
 		lf := newLockfile("")
-		violations, events, err := lockfile.VerifyAgainstTree(context.Background(), &lf, tree)
+		violations, events, err := lockfile.VerifyAgainstTree(context.Background(), &lf, tree, npmPM())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -186,15 +192,15 @@ func TestVerifyAgainstTree(t *testing.T) {
 		lf := newLockfile("")
 		lf.Packages["ghost@1.0"] = newEntry("url", "hash", "now")
 
-		tree := npm.DependencyTree{
+		tree := pkgmanager.DependencyTree{
 			Name:    "test",
 			Version: "1.0",
-			Dependencies: map[string]npm.DependencyRef{
+			Dependencies: map[string]pkgmanager.DependencyRef{
 				"ghost": {Version: "1.0"},
 			},
 		}
 
-		violations, events, err := lockfile.VerifyAgainstTree(context.Background(), &lf, tree)
+		violations, events, err := lockfile.VerifyAgainstTree(context.Background(), &lf, tree, npmPM())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -231,10 +237,10 @@ func TestAdversarial_hashTampered(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tree := npm.DependencyTree{
+	tree := pkgmanager.DependencyTree{
 		Name:    "test",
 		Version: "1.0",
-		Dependencies: map[string]npm.DependencyRef{
+		Dependencies: map[string]pkgmanager.DependencyRef{
 			"pkg": {Version: "1.0"},
 		},
 	}
@@ -242,7 +248,7 @@ func TestAdversarial_hashTampered(t *testing.T) {
 	lf := newLockfile("")
 	lf.Packages["pkg@1.0"] = newEntry("url", "sha512-fakehashthatexistsonlyonpaper", "earlier")
 
-	violations, events, err := lockfile.VerifyAgainstTree(context.Background(), &lf, tree)
+	violations, events, err := lockfile.VerifyAgainstTree(context.Background(), &lf, tree, npmPM())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -270,16 +276,16 @@ func TestAdversarial_modifiedAfterSync(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tree := npm.DependencyTree{
+	tree := pkgmanager.DependencyTree{
 		Name:    "test",
 		Version: "1.0",
-		Dependencies: map[string]npm.DependencyRef{
+		Dependencies: map[string]pkgmanager.DependencyRef{
 			"pkg": {Version: "1.0"},
 		},
 	}
 
 	lf := newLockfile("")
-	if _, err := lockfile.SyncWithTree(context.Background(), &lf, tree); err != nil {
+	if _, err := lockfile.SyncWithTree(context.Background(), &lf, tree, npmPM()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -288,7 +294,7 @@ func TestAdversarial_modifiedAfterSync(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	violations, events, err := lockfile.VerifyAgainstTree(context.Background(), &lf, tree)
+	violations, events, err := lockfile.VerifyAgainstTree(context.Background(), &lf, tree, npmPM())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -311,15 +317,15 @@ func TestAdversarial_packageDeleted(t *testing.T) {
 	lf := newLockfile("")
 	lf.Packages["deleted@1.0"] = newEntry("url", "sha512-abc", "past")
 
-	tree := npm.DependencyTree{
+	tree := pkgmanager.DependencyTree{
 		Name:    "test",
 		Version: "1.0",
-		Dependencies: map[string]npm.DependencyRef{
+		Dependencies: map[string]pkgmanager.DependencyRef{
 			"deleted": {Version: "1.0"},
 		},
 	}
 
-	violations, events, err := lockfile.VerifyAgainstTree(context.Background(), &lf, tree)
+	violations, events, err := lockfile.VerifyAgainstTree(context.Background(), &lf, tree, npmPM())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -347,10 +353,10 @@ func TestAdversarial_lockfileHashWrong(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tree := npm.DependencyTree{
+	tree := pkgmanager.DependencyTree{
 		Name:    "test",
 		Version: "1.0",
-		Dependencies: map[string]npm.DependencyRef{
+		Dependencies: map[string]pkgmanager.DependencyRef{
 			"pkg": {Version: "1.0"},
 		},
 	}
@@ -358,7 +364,7 @@ func TestAdversarial_lockfileHashWrong(t *testing.T) {
 	lf := newLockfile("")
 	lf.Packages["pkg@1.0"] = newEntry("url", "sha512-nottheactualhash", "now")
 
-	violations, events, err := lockfile.VerifyAgainstTree(context.Background(), &lf, tree)
+	violations, events, err := lockfile.VerifyAgainstTree(context.Background(), &lf, tree, npmPM())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

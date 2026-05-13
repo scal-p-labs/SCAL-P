@@ -10,7 +10,7 @@ import (
 
 	"scal-p/internal/audit"
 	"scal-p/internal/lockfile"
-	"scal-p/internal/npm"
+	"scal-p/internal/pkgmanager"
 	"scal-p/internal/policy"
 )
 
@@ -29,8 +29,13 @@ func runInstall(args []string) error {
 
 	pmArgs := fs.Args()
 	cfg.pm = strings.ToLower(cfg.pm)
-	if !npm.IsSupported(cfg.pm) {
+	if !pkgmanager.IsSupported(cfg.pm) {
 		return fmt.Errorf("unsupported package manager: %s", cfg.pm)
+	}
+
+	pm, err := pkgmanager.Get(cfg.pm)
+	if err != nil {
+		return err
 	}
 
 	ctx := context.Background()
@@ -62,11 +67,11 @@ func runInstall(args []string) error {
 	}
 
 	if mode == policy.ModeGuarded {
-		if err := npm.ResolveViaPackageLockOnly(ctx, pmArgs...); err != nil {
+		if err := pm.Resolve(ctx, pmArgs...); err != nil {
 			return err
 		}
 
-		nodes, err := npm.ParsePackageLock(ctx, "package-lock.json")
+		nodes, err := pm.ParseLockfile(ctx)
 		if err != nil {
 			return err
 		}
@@ -85,11 +90,11 @@ func runInstall(args []string) error {
 		}
 	}
 
-	if err := npm.RunInstall(ctx, cfg.pm, pmArgs); err != nil {
+	if err := pm.Install(ctx, pmArgs...); err != nil {
 		return err
 	}
 
-	depTree, err := npm.GetDependencyTree(ctx, cfg.pm)
+	depTree, err := pm.GetTree(ctx)
 	if err != nil {
 		return err
 	}
@@ -100,7 +105,7 @@ func runInstall(args []string) error {
 		return err
 	}
 
-	hashEvents, err := lockfile.SyncWithTree(ctx, &lf, depTree)
+	hashEvents, err := lockfile.SyncWithTree(ctx, &lf, depTree, pm)
 	if err != nil {
 		return err
 	}

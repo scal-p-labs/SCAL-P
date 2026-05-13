@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"scal-p/internal/npm"
+	"scal-p/internal/pkgmanager"
 	"scal-p/internal/policy"
 )
 
@@ -35,8 +35,13 @@ func runPolicyCheck(args []string) error {
 	applyDefaults(cfg)
 
 	cfg.pm = strings.ToLower(cfg.pm)
-	if !npm.IsSupported(cfg.pm) {
+	if !pkgmanager.IsSupported(cfg.pm) {
 		return fmt.Errorf("unsupported package manager: %s", cfg.pm)
+	}
+
+	pm, err := pkgmanager.Get(cfg.pm)
+	if err != nil {
+		return err
 	}
 
 	ctx := context.Background()
@@ -45,11 +50,11 @@ func runPolicyCheck(args []string) error {
 		return err
 	}
 
-	if err := npm.ResolveViaPackageLockOnly(ctx); err != nil {
+	if err := pm.Resolve(ctx); err != nil {
 		return err
 	}
 
-	nodes, err := npm.ParsePackageLock(ctx, "package-lock.json")
+	nodes, err := pm.ParseLockfile(ctx)
 	if err != nil {
 		return err
 	}

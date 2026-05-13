@@ -6,14 +6,14 @@ import (
 
 	"scal-p/internal/audit"
 	"scal-p/internal/lockfile"
-	"scal-p/internal/npm"
+	"scal-p/internal/pkgmanager"
 	"scal-p/internal/policy"
 )
 
 func runAudit(args []string) error {
     fs := newFlagSet("audit")
     cfg := &cliConfig{}
-    fs.StringVar(&cfg.pm, "pm", "npm", "package manager: npm|pnpm|yarn")
+    fs.StringVar(&cfg.pm, "pm", "npm", "package manager: npm|pnpm")
     fs.StringVar(&cfg.policyPath, "policy", ".scalp/policy.json", "policy path")
     fs.BoolVar(&cfg.ci, "ci", false, "set enforcement to block on violation")
 
@@ -21,6 +21,11 @@ func runAudit(args []string) error {
         return err
     }
     applyDefaults(cfg)
+
+	pm, err := pkgmanager.Get(cfg.pm)
+	if err != nil {
+		return err
+	}
 
 	ctx := context.Background()
 	pol, polInfo, err := policy.Load(ctx, cfg.policyPath)
@@ -50,12 +55,12 @@ func runAudit(args []string) error {
 		return err
 	}
 
-	depTree, err := npm.GetDependencyTree(ctx, cfg.pm)
+	depTree, err := pm.GetTree(ctx)
 	if err != nil {
 		return err
 	}
 
-	violations, events, err := lockfile.VerifyAgainstTree(ctx, &lf, depTree)
+	violations, events, err := lockfile.VerifyAgainstTree(ctx, &lf, depTree, pm)
 	if err != nil {
 		return err
 	}

@@ -7,18 +7,18 @@ import (
 
 	"scal-p/internal/audit"
 	"scal-p/internal/hash"
-	"scal-p/internal/npm"
+	"scal-p/internal/pkgmanager"
 	"scal-p/internal/policy"
 )
 
 // SyncWithTree updates the lockfile based on the dependency tree.
-func SyncWithTree(ctx context.Context, lf *Lockfile, tree npm.DependencyTree) ([]audit.Event, error) {
-	nodes := npm.Flatten(tree)
+func SyncWithTree(ctx context.Context, lf *Lockfile, tree pkgmanager.DependencyTree, pm pkgmanager.PackageManager) ([]audit.Event, error) {
+	nodes := pkgmanager.Flatten(tree)
 	events := make([]audit.Event, 0, len(nodes))
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	for _, node := range nodes {
-		pkgDir := npm.LocalPath(node.Name)
+		pkgDir := pm.LocalPath(node.Name)
 		if !hash.IsDir(pkgDir) {
 			continue
 		}
@@ -47,8 +47,8 @@ func SyncWithTree(ctx context.Context, lf *Lockfile, tree npm.DependencyTree) ([
 }
 
 // VerifyAgainstTree checks the lockfile against the dependency tree.
-func VerifyAgainstTree(ctx context.Context, lf *Lockfile, tree npm.DependencyTree) ([]policy.Violation, []audit.Event, error) {
-	nodes := npm.Flatten(tree)
+func VerifyAgainstTree(ctx context.Context, lf *Lockfile, tree pkgmanager.DependencyTree, pm pkgmanager.PackageManager) ([]policy.Violation, []audit.Event, error) {
+	nodes := pkgmanager.Flatten(tree)
 	events := make([]audit.Event, 0, len(nodes))
 	var violations []policy.Violation
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -72,7 +72,7 @@ func VerifyAgainstTree(ctx context.Context, lf *Lockfile, tree npm.DependencyTre
 			continue
 		}
 
-		pkgDir := npm.LocalPath(node.Name)
+		pkgDir := pm.LocalPath(node.Name)
 		if !hash.IsDir(pkgDir) {
 			violations = append(violations, policy.Violation{
 				PackageID: key,

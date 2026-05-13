@@ -10,9 +10,16 @@ import (
 	"time"
 
 	"scal-p/internal/audit"
+	"scal-p/internal/npm"
+	"scal-p/internal/pnpm"
 	"scal-p/internal/policy"
 	"scal-p/internal/version"
 )
+
+func init() {
+	npm.Register()
+	pnpm.Register()
+}
 
 func Run(args []string) error {
 	if len(args) == 0 {

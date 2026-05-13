@@ -5,19 +5,19 @@ import (
 	"strings"
 	"testing"
 
-	"scal-p/internal/npm"
+	"scal-p/internal/pkgmanager"
 	"scal-p/internal/policy"
 )
 
-func node(name, version string, depth int) npm.PackageNode {
-	return npm.PackageNode{Name: name, Version: version, Depth: depth}
+func node(name, version string, depth int) pkgmanager.PackageNode {
+	return pkgmanager.PackageNode{Name: name, Version: version, Depth: depth}
 }
 
 func TestEvaluate_auditOnly(t *testing.T) {
 	pol := policy.DefaultPolicy()
 	pol.Trust.Mode = policy.TrustAuditOnly
 
-	nodes := []npm.PackageNode{node("evil", "1.0", 0)}
+	nodes := []pkgmanager.PackageNode{node("evil", "1.0", 0)}
 	violations, err := policy.Evaluate(pol, nodes)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -31,37 +31,37 @@ func TestEvaluate_allowlist(t *testing.T) {
 	tests := []struct {
 		name     string
 		pol      policy.Policy
-		nodes    []npm.PackageNode
+		nodes    []pkgmanager.PackageNode
 		violates int
 	}{
 		{
 			name:     "allowed exact",
 			pol:      allowlistPol([]policy.PackageRule{{Name: "lodash"}, {Pattern: "@trusted/*"}}),
-			nodes:    []npm.PackageNode{node("lodash", "4.17", 0)},
+			nodes:    []pkgmanager.PackageNode{node("lodash", "4.17", 0)},
 			violates: 0,
 		},
 		{
 			name:     "allowed scoped",
 			pol:      allowlistPol([]policy.PackageRule{{Name: "lodash"}, {Pattern: "@trusted/*"}}),
-			nodes:    []npm.PackageNode{node("@trusted/foo", "1.0", 0)},
+			nodes:    []pkgmanager.PackageNode{node("@trusted/foo", "1.0", 0)},
 			violates: 0,
 		},
 		{
 			name:     "blocked unknown",
 			pol:      allowlistPol([]policy.PackageRule{{Name: "lodash"}, {Pattern: "@trusted/*"}}),
-			nodes:    []npm.PackageNode{node("evil", "1.0", 0)},
+			nodes:    []pkgmanager.PackageNode{node("evil", "1.0", 0)},
 			violates: 1,
 		},
 		{
 			name:     "mixed",
 			pol:      allowlistPol([]policy.PackageRule{{Name: "lodash"}, {Pattern: "@trusted/*"}}),
-			nodes:    []npm.PackageNode{node("lodash", "4.17", 0), node("evil", "1.0", 0)},
+			nodes:    []pkgmanager.PackageNode{node("lodash", "4.17", 0), node("evil", "1.0", 0)},
 			violates: 1,
 		},
 		{
 			name:     "empty allowlist blocks all",
 			pol:      allowlistPol(nil),
-			nodes:    []npm.PackageNode{node("lodash", "4.17", 0)},
+			nodes:    []pkgmanager.PackageNode{node("lodash", "4.17", 0)},
 			violates: 1,
 		},
 		{
@@ -96,37 +96,37 @@ func TestEvaluate_denylist(t *testing.T) {
 	tests := []struct {
 		name     string
 		pol      policy.Policy
-		nodes    []npm.PackageNode
+		nodes    []pkgmanager.PackageNode
 		violates int
 	}{
 		{
 			name:     "allowed not denied",
 			pol:      denylistPol([]policy.PackageRule{{Name: "evil"}, {Pattern: "*-free"}}),
-			nodes:    []npm.PackageNode{node("lodash", "4.17", 0)},
+			nodes:    []pkgmanager.PackageNode{node("lodash", "4.17", 0)},
 			violates: 0,
 		},
 		{
 			name:     "exact deny",
 			pol:      denylistPol([]policy.PackageRule{{Name: "evil"}, {Pattern: "*-free"}}),
-			nodes:    []npm.PackageNode{node("evil", "1.0", 0)},
+			nodes:    []pkgmanager.PackageNode{node("evil", "1.0", 0)},
 			violates: 1,
 		},
 		{
 			name:     "pattern deny",
 			pol:      denylistPol([]policy.PackageRule{{Name: "evil"}, {Pattern: "*-free"}}),
-			nodes:    []npm.PackageNode{node("trial-free", "1.0", 0)},
+			nodes:    []pkgmanager.PackageNode{node("trial-free", "1.0", 0)},
 			violates: 1,
 		},
 		{
 			name:     "mixed",
 			pol:      denylistPol([]policy.PackageRule{{Name: "evil"}, {Pattern: "*-free"}}),
-			nodes:    []npm.PackageNode{node("lodash", "4.17", 0), node("evil", "1.0", 0)},
+			nodes:    []pkgmanager.PackageNode{node("lodash", "4.17", 0), node("evil", "1.0", 0)},
 			violates: 1,
 		},
 		{
 			name:     "empty denylist allows all",
 			pol:      denylistPol(nil),
-			nodes:    []npm.PackageNode{node("evil", "1.0", 0)},
+			nodes:    []pkgmanager.PackageNode{node("evil", "1.0", 0)},
 			violates: 0,
 		},
 		{
@@ -177,7 +177,7 @@ func TestEvaluate_transitiveDepth(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			nodes := []npm.PackageNode{node("pkg", "1.0", tt.depth)}
+			nodes := []pkgmanager.PackageNode{node("pkg", "1.0", tt.depth)}
 			violations, err := policy.Evaluate(pol, nodes)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -196,7 +196,7 @@ func TestEvaluate_transitiveDepthZero(t *testing.T) {
 	pol.Packages.Allow = []policy.PackageRule{{Pattern: "*"}}
 	pol.Transitive.MaxDepth = 0
 
-	nodes := []npm.PackageNode{node("deep", "1.0", 100)}
+	nodes := []pkgmanager.PackageNode{node("deep", "1.0", 100)}
 	violations, err := policy.Evaluate(pol, nodes)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -212,7 +212,7 @@ func TestEvaluate_edgeCases(t *testing.T) {
 	pol.Packages.Deny = []policy.PackageRule{{Name: "evil"}}
 
 	t.Run("empty version", func(t *testing.T) {
-		nodes := []npm.PackageNode{node("evil", "", 0)}
+		nodes := []pkgmanager.PackageNode{node("evil", "", 0)}
 		violations, err := policy.Evaluate(pol, nodes)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -247,7 +247,7 @@ func TestEvaluate_duplicateVersions(t *testing.T) {
 		{Name: "lodash"},
 	}
 
-	nodes := []npm.PackageNode{
+	nodes := []pkgmanager.PackageNode{
 		{Name: "lodash", Version: "4.17.21", Depth: 0},
 		{Name: "lodash", Version: "3.10.1", Depth: 1},
 	}
@@ -270,7 +270,7 @@ func TestEvaluate_denylistBlocksMultiplePatterns(t *testing.T) {
 		{Pattern: "*-evil"},
 	}
 
-	nodes := []npm.PackageNode{
+	nodes := []pkgmanager.PackageNode{
 		{Name: "a", Version: "1.0", Depth: 0},
 		{Name: "b", Version: "2.0", Depth: 1},
 		{Name: "c-evil", Version: "3.0", Depth: 2},

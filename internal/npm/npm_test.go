@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"scal-p/internal/npm"
+	"scal-p/internal/pkgmanager"
 )
 
 // mockExec overrides npm's command factory to produce controlled output.
@@ -55,23 +56,26 @@ func mockExecCheckArgs(t *testing.T, stdout string, exitCode int, checkFn func(n
 	t.Cleanup(func() { npm.SetExecCommand(restore) })
 }
 
-func TestIsSupported(t *testing.T) {
-	tests := []struct {
-		pm   string
-		supp bool
-	}{
-		{"npm", true},
-		{"pnpm", true},
-		{"yarn", true},
-		{"pip", false},
-		{"cargo", false},
-		{"", false},
+// ──────────────────────────────────────────────
+// Adapter interface compliance
+// ──────────────────────────────────────────────
+
+func TestAdapterImplementsInterface(t *testing.T) {
+	var _ pkgmanager.PackageManager = &npm.Adapter{}
+}
+
+func TestAdapterName(t *testing.T) {
+	a := &npm.Adapter{}
+	if a.Name() != "npm" {
+		t.Errorf("expected npm, got %s", a.Name())
 	}
-	for _, tt := range tests {
-		got := npm.IsSupported(tt.pm)
-		if got != tt.supp {
-			t.Errorf("IsSupported(%q) = %v, want %v", tt.pm, got, tt.supp)
-		}
+}
+
+func TestAdapterLocalPath(t *testing.T) {
+	a := &npm.Adapter{}
+	got := a.LocalPath("lodash")
+	if got != "node_modules/lodash" {
+		t.Errorf("expected node_modules/lodash, got %s", got)
 	}
 }
 
@@ -83,7 +87,7 @@ func TestGetDependencyTree(t *testing.T) {
 	t.Run("successful parse", func(t *testing.T) {
 		mockExec(t, `{"name":"root","version":"1.0","dependencies":{"a":{"version":"1.0"}}}`, 0)
 
-		tree, err := npm.GetDependencyTree(context.Background(), "npm")
+		tree, err := npm.GetDependencyTree(context.Background())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -107,29 +111,15 @@ func TestGetDependencyTree(t *testing.T) {
 				}
 			})
 
-		if _, err := npm.GetDependencyTree(context.Background(), "npm"); err != nil {
+		if _, err := npm.GetDependencyTree(context.Background()); err != nil {
 			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-
-	t.Run("unsupported pm", func(t *testing.T) {
-		_, err := npm.GetDependencyTree(context.Background(), "pip")
-		if err == nil {
-			t.Fatal("expected error for unsupported pm")
-		}
-	})
-
-	t.Run("non-npm pm returns error", func(t *testing.T) {
-		_, err := npm.GetDependencyTree(context.Background(), "pnpm")
-		if err == nil {
-			t.Fatal("expected error for pnpm (not supported in v0.1)")
 		}
 	})
 
 	t.Run("npm exits non-zero", func(t *testing.T) {
 		mockExec(t, "", 1)
 
-		_, err := npm.GetDependencyTree(context.Background(), "npm")
+		_, err := npm.GetDependencyTree(context.Background())
 		if err == nil {
 			t.Fatal("expected error when npm fails")
 		}
@@ -138,7 +128,7 @@ func TestGetDependencyTree(t *testing.T) {
 	t.Run("invalid JSON from npm", func(t *testing.T) {
 		mockExec(t, `{not valid json`, 0)
 
-		_, err := npm.GetDependencyTree(context.Background(), "npm")
+		_, err := npm.GetDependencyTree(context.Background())
 		if err == nil {
 			t.Fatal("expected error for invalid JSON")
 		}
@@ -153,7 +143,7 @@ func TestRunInstall(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		mockExec(t, "", 0)
 
-		if err := npm.RunInstall(context.Background(), "npm", nil); err != nil {
+		if err := npm.RunInstall(context.Background(), nil); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -169,7 +159,7 @@ func TestRunInstall(t *testing.T) {
 				}
 			})
 
-		if err := npm.RunInstall(context.Background(), "npm", nil); err != nil {
+		if err := npm.RunInstall(context.Background(), nil); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -183,22 +173,15 @@ func TestRunInstall(t *testing.T) {
 				}
 			})
 
-		if err := npm.RunInstall(context.Background(), "npm", []string{"lodash", "express"}); err != nil {
+		if err := npm.RunInstall(context.Background(), []string{"lodash", "express"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-
-	t.Run("unsupported pm", func(t *testing.T) {
-		err := npm.RunInstall(context.Background(), "pip", nil)
-		if err == nil {
-			t.Fatal("expected error")
 		}
 	})
 
 	t.Run("failure", func(t *testing.T) {
 		mockExec(t, "error message", 1)
 
-		err := npm.RunInstall(context.Background(), "npm", nil)
+		err := npm.RunInstall(context.Background(), nil)
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -306,25 +289,25 @@ func TestResolveViaPackageLockOnly(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────
-// Flatten — duplicate versions
+// Flatten — duplicate versions (via pkgmanager)
 // ──────────────────────────────────────────────
 
 func TestFlatten_duplicateVersions(t *testing.T) {
 	t.Run("lodash@3 + lodash@4 are distinct entries", func(t *testing.T) {
-		tree := npm.DependencyTree{
+		tree := pkgmanager.DependencyTree{
 			Name:    "root",
 			Version: "1.0",
-			Dependencies: map[string]npm.DependencyRef{
+			Dependencies: map[string]pkgmanager.DependencyRef{
 				"lodash": {
 					Version: "4.17.21",
-					Dependencies: map[string]npm.DependencyRef{
+					Dependencies: map[string]pkgmanager.DependencyRef{
 						"lodash": {Version: "3.10.1"},
 					},
 				},
 			},
 		}
 
-		nodes := npm.Flatten(tree)
+		nodes := pkgmanager.Flatten(tree)
 		if len(nodes) != 2 {
 			t.Fatalf("expected 2 nodes for lodash@3 + lodash@4, got %d", len(nodes))
 		}
@@ -348,21 +331,21 @@ func TestFlatten_duplicateVersions(t *testing.T) {
 	})
 
 	t.Run("deep chain correctly tracks depth", func(t *testing.T) {
-		deps := map[string]npm.DependencyRef{}
+		deps := map[string]pkgmanager.DependencyRef{}
 		current := deps
 		for _, name := range []string{"a", "b", "c", "d", "e"} {
-			next := map[string]npm.DependencyRef{}
-			current[name] = npm.DependencyRef{Version: "1.0", Dependencies: next}
+			next := map[string]pkgmanager.DependencyRef{}
+			current[name] = pkgmanager.DependencyRef{Version: "1.0", Dependencies: next}
 			current = next
 		}
 
-		tree := npm.DependencyTree{
+		tree := pkgmanager.DependencyTree{
 			Name:         "root",
 			Version:      "1.0",
 			Dependencies: deps,
 		}
 
-		nodes := npm.Flatten(tree)
+		nodes := pkgmanager.Flatten(tree)
 		if len(nodes) != 5 {
 			t.Fatalf("expected 5 nodes, got %d", len(nodes))
 		}
@@ -374,40 +357,6 @@ func TestFlatten_duplicateVersions(t *testing.T) {
 			if n.Depth != i {
 				t.Errorf("node[%d]: expected depth=%d, got %d", i, i, n.Depth)
 			}
-		}
-	})
-}
-
-// ──────────────────────────────────────────────
-// ResolveNode edge cases
-// ──────────────────────────────────────────────
-
-func TestResolveNode(t *testing.T) {
-	deps := map[string]npm.DependencyRef{
-		"a": {Version: "1.0"},
-	}
-
-	t.Run("found", func(t *testing.T) {
-		ref, err := npm.ResolveNode(deps, "a")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if ref.Version != "1.0" {
-			t.Errorf("expected 1.0, got %s", ref.Version)
-		}
-	})
-
-	t.Run("not found", func(t *testing.T) {
-		_, err := npm.ResolveNode(deps, "b")
-		if err == nil {
-			t.Fatal("expected error")
-		}
-	})
-
-	t.Run("nil deps", func(t *testing.T) {
-		_, err := npm.ResolveNode(nil, "a")
-		if err == nil {
-			t.Fatal("expected error")
 		}
 	})
 }
@@ -438,29 +387,6 @@ func TestLocalPath_edgeCases(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────
-// IsScoped edge cases
-// ──────────────────────────────────────────────
-
-func TestIsScoped(t *testing.T) {
-	tests := []struct {
-		name   string
-		scoped bool
-	}{
-		{"@scope/pkg", true},
-		{"lodash", false},
-		{"@scope", true},
-		{"", false},
-		{"@@double", true},
-	}
-	for _, tt := range tests {
-		got := npm.IsScoped(tt.name)
-		if got != tt.scoped {
-			t.Errorf("IsScoped(%q) = %v, want %v", tt.name, got, tt.scoped)
-		}
-	}
-}
-
-// ──────────────────────────────────────────────
 // ParsePackageLock
 // ──────────────────────────────────────────────
 
@@ -473,7 +399,7 @@ func TestParsePackageLock(t *testing.T) {
 		if len(nodes) != 2 {
 			t.Fatalf("expected 2 nodes, got %d", len(nodes))
 		}
-		byName := map[string]npm.PackageNode{}
+		byName := map[string]pkgmanager.PackageNode{}
 		for _, n := range nodes {
 			byName[n.Name] = n
 		}
@@ -497,7 +423,7 @@ func TestParsePackageLock(t *testing.T) {
 		if len(nodes) != 3 {
 			t.Fatalf("expected 3 nodes, got %d", len(nodes))
 		}
-		byName := map[string]npm.PackageNode{}
+		byName := map[string]pkgmanager.PackageNode{}
 		for _, n := range nodes {
 			byName[n.Name] = n
 		}

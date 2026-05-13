@@ -3,12 +3,12 @@ package npm
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 
 	"scal-p/internal/ctxutil"
+	"scal-p/internal/pkgmanager"
 )
 
 // execCommand is the function used to create external commands.
@@ -26,129 +26,80 @@ func SetExecCommand(fn ExecFunc) ExecFunc {
 	return old
 }
 
-// DependencyTree models the npm ls --json output.
-type DependencyTree struct {
-	Name         string                   `json:"name"`
-	Version      string                   `json:"version"`
-	Dependencies map[string]DependencyRef `json:"dependencies"`
+// Adapter implements pkgmanager.PackageManager for npm.
+type Adapter struct{}
+
+// Register registers the npm adapter with the package manager registry.
+func Register() {
+	pkgmanager.Register("npm", func() pkgmanager.PackageManager {
+		return &Adapter{}
+	})
 }
 
-// DependencyRef represents a dependency node in npm's tree.
-type DependencyRef struct {
-	Version      string                   `json:"version"`
-	Resolved     string                   `json:"resolved"`
-	Integrity    string                   `json:"integrity"`
-	Path         string                   `json:"path"`
-	Dependencies map[string]DependencyRef `json:"dependencies"`
+// Name returns the package manager identifier.
+func (a *Adapter) Name() string { return "npm" }
+
+// Resolve runs npm install --package-lock-only to resolve dependencies.
+func (a *Adapter) Resolve(ctx context.Context, args ...string) error {
+	return ResolveViaPackageLockOnly(ctx, args...)
 }
 
-// PackageNode is a flattened dependency node.
-type PackageNode struct {
-	Name      string
-	Version   string
-	Resolved  string
-	Integrity string
-	Path      string
-	Depth     int
+// GetTree returns the npm dependency tree.
+func (a *Adapter) GetTree(ctx context.Context) (pkgmanager.DependencyTree, error) {
+	return GetDependencyTree(ctx)
 }
 
-// IsSupported reports whether the package manager is supported.
-func IsSupported(pm string) bool {
-	switch pm {
-	case "npm", "pnpm", "yarn":
-		return true
-	default:
-		return false
-	}
+// Install runs npm install with passthrough arguments.
+func (a *Adapter) Install(ctx context.Context, args ...string) error {
+	return RunInstall(ctx, args)
+}
+
+// ParseLockfile reads package-lock.json and returns a flat node list.
+func (a *Adapter) ParseLockfile(ctx context.Context) ([]pkgmanager.PackageNode, error) {
+	return ParsePackageLock(ctx, "package-lock.json")
+}
+
+// LocalPath returns the node_modules path for a package.
+func (a *Adapter) LocalPath(name string) string {
+	return LocalPath(name)
 }
 
 // GetDependencyTree returns npm's dependency tree.
-func GetDependencyTree(ctx context.Context, pm string) (DependencyTree, error) {
+func GetDependencyTree(ctx context.Context) (pkgmanager.DependencyTree, error) {
 	if err := ctxutil.Check(ctx); err != nil {
-		return DependencyTree{}, err
+		return pkgmanager.DependencyTree{}, err
 	}
-	if !IsSupported(pm) {
-		return DependencyTree{}, fmt.Errorf("unsupported package manager: %s", pm)
-	}
-	if pm != "npm" {
-		return DependencyTree{}, fmt.Errorf("dependency tree not supported for %s in v0.1", pm)
-	}
-	cmd := execCommand(ctx, pm, "ls", "--all", "--json")
+	cmd := execCommand(ctx, "npm", "ls", "--all", "--json")
 	cmd.Stderr = os.Stderr
 	output, err := cmd.Output()
 	if err != nil {
-		return DependencyTree{}, fmt.Errorf("failed to run %s ls: %w", pm, err)
+		return pkgmanager.DependencyTree{}, fmt.Errorf("failed to run npm ls: %w", err)
 	}
 
-	var tree DependencyTree
+	var tree pkgmanager.DependencyTree
 	if err := json.Unmarshal(output, &tree); err != nil {
-		return DependencyTree{}, fmt.Errorf("invalid dependency tree: %w", err)
+		return pkgmanager.DependencyTree{}, fmt.Errorf("invalid dependency tree: %w", err)
 	}
 	return tree, nil
 }
 
 // RunInstall runs npm install with passthrough arguments.
-func RunInstall(ctx context.Context, pm string, args []string) error {
+func RunInstall(ctx context.Context, args []string) error {
 	if err := ctxutil.Check(ctx); err != nil {
 		return err
 	}
-	if !IsSupported(pm) {
-		return fmt.Errorf("unsupported package manager: %s", pm)
-	}
 	cmdArgs := append([]string{"install"}, args...)
-	cmd := execCommand(ctx, pm, cmdArgs...)
+	cmd := execCommand(ctx, "npm", cmdArgs...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s install failed: %w", pm, err)
+		return fmt.Errorf("npm install failed: %w", err)
 	}
 	return nil
-}
-
-// Flatten converts a dependency tree into a flat list of PackageNode.
-func Flatten(tree DependencyTree) []PackageNode {
-	if tree.Dependencies == nil {
-		return nil
-	}
-	var nodes []PackageNode
-	visitDeps(tree.Dependencies, 0, &nodes)
-	return nodes
-}
-
-func visitDeps(deps map[string]DependencyRef, depth int, nodes *[]PackageNode) {
-	for name, ref := range deps {
-		*nodes = append(*nodes, PackageNode{
-			Name:      name,
-			Version:   ref.Version,
-			Resolved:  ref.Resolved,
-			Integrity: ref.Integrity,
-			Path:      ref.Path,
-			Depth:     depth,
-		})
-		if ref.Dependencies != nil {
-			visitDeps(ref.Dependencies, depth+1, nodes)
-		}
-	}
-}
-
-// ResolveNode finds a dependency by name in a dependency map.
-func ResolveNode(deps map[string]DependencyRef, name string) (DependencyRef, error) {
-	if deps == nil {
-		return DependencyRef{}, errors.New("dependencies empty")
-	}
-	if ref, ok := deps[name]; ok {
-		return ref, nil
-	}
-	return DependencyRef{}, fmt.Errorf("package not found: %s", name)
 }
 
 // LocalPath returns the node_modules path for a package.
 func LocalPath(name string) string {
 	return "node_modules/" + name
-}
-
-// IsScoped reports whether the package name is scoped.
-func IsScoped(name string) bool {
-	return len(name) > 0 && name[0] == '@'
 }

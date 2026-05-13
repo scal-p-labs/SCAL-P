@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"scal-p/internal/ctxutil"
+	"scal-p/internal/pkgmanager"
 )
 
 // PackageLock represents npm's package-lock.json format.
@@ -25,7 +26,7 @@ type LockPackage struct {
 }
 
 // ParsePackageLock reads package-lock.json and returns a flat list of nodes.
-func ParsePackageLock(ctx context.Context, path string) ([]PackageNode, error) {
+func ParsePackageLock(ctx context.Context, path string) ([]pkgmanager.PackageNode, error) {
 	if err := ctxutil.Check(ctx); err != nil {
 		return nil, err
 	}
@@ -47,7 +48,7 @@ func ParsePackageLock(ctx context.Context, path string) ([]PackageNode, error) {
 		return nil, fmt.Errorf("unsupported lockfile version %d, need v2 or v3", pl.LockfileVersion)
 	}
 
-	var nodes []PackageNode
+	var nodes []pkgmanager.PackageNode
 	for pkgPath, pkg := range pl.Packages {
 		if pkgPath == "" {
 			continue
@@ -62,7 +63,7 @@ func ParsePackageLock(ctx context.Context, path string) ([]PackageNode, error) {
 		}
 		depth := countNodeModules(pkgPath)
 
-		nodes = append(nodes, PackageNode{
+		nodes = append(nodes, pkgmanager.PackageNode{
 			Name:      name,
 			Version:   pkg.Version,
 			Resolved:  pkg.Resolved,
