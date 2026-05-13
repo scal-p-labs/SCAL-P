@@ -12,6 +12,7 @@ import (
 	"scal-p/internal/lockfile"
 	"scal-p/internal/pkgmanager"
 	"scal-p/internal/policy"
+	"scal-p/internal/trust"
 )
 
 func runInstall(args []string) error {
@@ -82,6 +83,20 @@ func runInstall(args []string) error {
 		if err != nil {
 			return err
 		}
+
+		if pol.Trust.MinScore > 0 {
+			lf, lfErr := lockfile.Load(ctx, ".scalp/lockfile.json")
+			if lfErr == nil {
+				scorer := trust.NewScorer(trust.DefaultCacheFile)
+				trustVs, tvErr := scorer.Evaluate(ctx, pol, nodes, &lf)
+				if tvErr != nil {
+					slog.Warn("trust score", "err", tvErr)
+				} else {
+					violations = append(violations, trustVs...)
+				}
+			}
+		}
+
 		if len(violations) > 0 {
 			if err := auditLogger.Log(ctx, policyViolationEvents(violations)); err != nil {
 				return err
