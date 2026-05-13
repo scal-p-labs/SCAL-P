@@ -9,6 +9,56 @@ import (
 	"scal-p/internal/cli"
 )
 
+func TestAdversarial_ciContext(t *testing.T) {
+	t.Run("fork context disallows --allow-scripts via default", func(t *testing.T) {
+		err := cli.Run([]string{"ci", "--pr-context", "fork", "--allow-scripts"})
+		if err == nil {
+			t.Error("expected ci to fail in fork context")
+		}
+	})
+
+	t.Run("invalid pr-context returns error", func(t *testing.T) {
+		err := cli.Run([]string{"ci", "--pr-context", "invalid"})
+		if err == nil || !strings.Contains(err.Error(), "invalid PR context") {
+			t.Errorf("expected invalid PR context error, got %v", err)
+		}
+	})
+
+	t.Run("verify with nonexistent artifact returns error", func(t *testing.T) {
+		err := cli.Run([]string{"verify", "--artifact", "/nonexistent/artifact", "--checksum", "/nonexistent/checksums"})
+		if err == nil {
+			t.Error("expected error for nonexistent artifact")
+		}
+	})
+}
+
+func TestAdversarial_cacheCorruption(t *testing.T) {
+	t.Run("checksum file with malformed lines warns and continues", func(t *testing.T) {
+		dir := t.TempDir()
+		artifact := filepath.Join(dir, "good.tar.gz")
+		checksums := filepath.Join(dir, "checksums.txt")
+
+		if err := os.WriteFile(artifact, []byte("data"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		content := []byte(
+			"sha512-abc  good.tar.gz\n" +
+				"bad-line-no-delimiter\n" +
+				"# comment\n" +
+				"\n",
+		)
+		if err := os.WriteFile(checksums, content, 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		err := cli.Run([]string{"verify", "--artifact", artifact, "--checksum", checksums, "--ci"})
+		if err == nil {
+			t.Error("expected error for mismatched hash with --ci")
+		}
+	})
+}
+
 func TestVerifyDispatch(t *testing.T) {
 	t.Run("ci dispatches as routed command", func(t *testing.T) {
 		err := cli.Run([]string{"ci"})

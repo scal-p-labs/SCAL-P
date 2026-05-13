@@ -346,6 +346,80 @@ func TestAdversarial_packageDeleted(t *testing.T) {
 	}
 }
 
+func TestAdversarial_ghostPackageInLockfile(t *testing.T) {
+	dir := t.TempDir()
+	old := chdir(t, dir)
+	defer restoreWd(t, old)
+
+	pkgDir := filepath.Join("node_modules", "real")
+	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkgDir, "index.js"), []byte("real"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tree := pkgmanager.DependencyTree{
+		Name:    "test",
+		Version: "1.0",
+		Dependencies: map[string]pkgmanager.DependencyRef{
+			"real": {Version: "1.0"},
+		},
+	}
+
+	lf := newLockfile("")
+	lf.Packages["real@1.0"] = newEntry("url", "", "now")
+
+	_, err := lockfile.SyncWithTree(context.Background(), &lf, tree, npmPM())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	entry, ok := lf.Packages["real@1.0"]
+	if !ok {
+		t.Fatal("expected real@1.0 in lockfile")
+	}
+	if entry.Integrity == "" {
+		t.Error("expected non-empty integrity after sync")
+	}
+}
+
+func TestAdversarial_tamperedIntegrityEmpty(t *testing.T) {
+	dir := t.TempDir()
+	old := chdir(t, dir)
+	defer restoreWd(t, old)
+
+	pkgDir := filepath.Join("node_modules", "pkg")
+	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkgDir, "index.js"), []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tree := pkgmanager.DependencyTree{
+		Name:    "test",
+		Version: "1.0",
+		Dependencies: map[string]pkgmanager.DependencyRef{
+			"pkg": {Version: "1.0"},
+		},
+	}
+
+	lf := newLockfile("")
+	lf.Packages["pkg@1.0"] = newEntry("url", "", "now")
+
+	violations, events, err := lockfile.VerifyAgainstTree(context.Background(), &lf, tree, npmPM())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(violations) == 0 {
+		t.Fatal("expected violation for empty integrity")
+	}
+	if len(events) > 0 && events[0].HashMatch {
+		t.Error("expected HashMatch=false for empty integrity")
+	}
+}
+
 func TestAdversarial_lockfileHashWrong(t *testing.T) {
 	dir := t.TempDir()
 	old := chdir(t, dir)
