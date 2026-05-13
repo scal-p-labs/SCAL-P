@@ -55,12 +55,18 @@ func Flatten(tree DependencyTree) []PackageNode {
 		return nil
 	}
 	var nodes []PackageNode
-	visitDeps(tree.Dependencies, 0, &nodes)
+	visited := map[string]bool{}
+	visitDeps(tree.Dependencies, 0, &nodes, visited)
 	return nodes
 }
 
-func visitDeps(deps map[string]DependencyRef, depth int, nodes *[]PackageNode) {
+func visitDeps(deps map[string]DependencyRef, depth int, nodes *[]PackageNode, visited map[string]bool) {
 	for name, ref := range deps {
+		key := name + "@" + ref.Version
+		if visited[key] {
+			continue
+		}
+		visited[key] = true
 		*nodes = append(*nodes, PackageNode{
 			Name:      name,
 			Version:   ref.Version,
@@ -70,7 +76,7 @@ func visitDeps(deps map[string]DependencyRef, depth int, nodes *[]PackageNode) {
 			Depth:     depth,
 		})
 		if ref.Dependencies != nil {
-			visitDeps(ref.Dependencies, depth+1, nodes)
+			visitDeps(ref.Dependencies, depth+1, nodes, visited)
 		}
 	}
 }

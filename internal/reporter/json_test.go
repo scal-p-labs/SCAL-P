@@ -52,6 +52,28 @@ func TestAuditFromEvents(t *testing.T) {
 	}
 }
 
+func TestWriteReportStdout(t *testing.T) {
+	t.Run("empty path writes to stdout", func(t *testing.T) {
+		violations := []policy.Violation{
+			{PackageID: "test@1.0", Reason: "reason", Rule: "rule"},
+		}
+		events := []audit.Event{
+			{Event: "hash_check", HashMatch: true},
+		}
+		err := reporter.WriteReport("", false, violations, events)
+		if err != nil {
+			t.Errorf("expected nil, got %v", err)
+		}
+	})
+
+	t.Run("dash path writes to stdout", func(t *testing.T) {
+		err := reporter.WriteReport("-", true, nil, nil)
+		if err != nil {
+			t.Errorf("expected nil, got %v", err)
+		}
+	})
+}
+
 func TestFromPolicyViolations(t *testing.T) {
 	vs := []policy.Violation{
 		{PackageID: "a@1", Reason: "r1", Rule: "rule1"},
