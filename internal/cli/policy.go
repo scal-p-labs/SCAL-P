@@ -66,7 +66,7 @@ func runPolicyCheck(args []string) error {
 		return err
 	}
 
-	if pol.Trust.MinScore > 0 {
+	if pol.Trust.MinScore > 0 || pol.Trust.RequireHash {
 		lf, lfErr := lockfile.Load(ctx, ".scalp/lockfile.json")
 		if lfErr == nil {
 			scorer := trust.NewScorer(trust.DefaultCacheFile)

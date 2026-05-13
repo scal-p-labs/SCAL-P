@@ -10,15 +10,21 @@ import (
 )
 
 const (
-	DefaultCacheDir = ".scalp/cache"
+	DefaultCacheDir  = ".scalp/cache"
 	DefaultCacheFile = ".scalp/cache/trust.json"
 	DefaultTTL       = 7 * 24 * time.Hour
 )
 
+type VersionCache struct {
+	FetchedAt string   `json:"fetched_at"`
+	CVEs      []string `json:"cves,omitempty"`
+}
+
 type CacheEntry struct {
-	FetchedAt       string   `json:"fetched_at"`
-	WeeklyDownloads int      `json:"weekly_downloads,omitempty"`
-	CVEs            []string `json:"cves,omitempty"`
+	FetchedAt       string                  `json:"fetched_at"`
+	WeeklyDownloads int                     `json:"weekly_downloads,omitempty"`
+	CVEs            []string                `json:"cves,omitempty"`
+	Versions        map[string]VersionCache `json:"versions,omitempty"`
 }
 
 type TrustCache struct {
@@ -43,6 +49,16 @@ func LoadCache(path string) (*TrustCache, error) {
 	if err := json.Unmarshal(data, &c.entries); err != nil {
 		return nil, fmt.Errorf("invalid trust cache JSON: %w", err)
 	}
+	for name := range c.entries {
+		if c.entries[name].Versions == nil {
+			c.entries[name] = CacheEntry{
+				FetchedAt:       c.entries[name].FetchedAt,
+				WeeklyDownloads: c.entries[name].WeeklyDownloads,
+				CVEs:            c.entries[name].CVEs,
+				Versions:        map[string]VersionCache{},
+			}
+		}
+	}
 	return c, nil
 }
 
@@ -56,6 +72,51 @@ func (c *TrustCache) Get(pkgName string) (CacheEntry, bool) {
 func (c *TrustCache) Set(pkgName string, entry CacheEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.entries[pkgName] = entry
+	c.dirty = true
+}
+
+func (c *TrustCache) GetVersionCVEs(pkgName, version string) []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	entry, ok := c.entries[pkgName]
+	if !ok {
+		return nil
+	}
+	if entry.Versions != nil {
+		if vc, ok := entry.Versions[version]; ok {
+			return vc.CVEs
+		}
+	}
+	return nil
+}
+
+func (c *TrustCache) SetVersionCVEs(pkgName, version string, cves []string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry := c.entries[pkgName]
+	if entry.Versions == nil {
+		entry.Versions = map[string]VersionCache{}
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	entry.Versions[version] = VersionCache{
+		FetchedAt: now,
+		CVEs:      cves,
+	}
+	entry.FetchedAt = now
+	c.entries[pkgName] = entry
+	c.dirty = true
+}
+
+func (c *TrustCache) SetDownloads(pkgName string, downloads int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry := c.entries[pkgName]
+	entry.FetchedAt = time.Now().UTC().Format(time.RFC3339)
+	entry.WeeklyDownloads = downloads
+	if entry.Versions == nil {
+		entry.Versions = map[string]VersionCache{}
+	}
 	c.entries[pkgName] = entry
 	c.dirty = true
 }

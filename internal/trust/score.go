@@ -61,7 +61,7 @@ func (s *Scorer) SetAPIURL(url string) {
 }
 
 func (s *Scorer) Evaluate(ctx context.Context, pol policy.Policy, nodes []pkgmanager.PackageNode, lf *lockfile.Lockfile) ([]policy.Violation, error) {
-	if pol.Trust.MinScore <= 0 {
+	if pol.Trust.MinScore <= 0 && !pol.Trust.RequireHash {
 		return nil, nil
 	}
 	if err := ctxutil.Check(ctx); err != nil {
@@ -77,19 +77,25 @@ func (s *Scorer) Evaluate(ctx context.Context, pol policy.Policy, nodes []pkgman
 
 	var violations []policy.Violation
 	for _, node := range nodes {
-		score := s.computeScore(ctx, node, lf, cache, auditCVEs)
+		key := fmt.Sprintf("%s@%s", node.Name, node.Version)
 
-		cache.Set(node.Name, CacheEntry{
-			FetchedAt:       time.Now().UTC().Format(time.RFC3339),
-			WeeklyDownloads: score.downloads,
-			CVEs:            auditCVEs[node.Name],
-		})
+		if pol.Trust.RequireHash && !hasLockfileHash(node, lf) {
+			violations = append(violations, policy.Violation{
+				PackageID: key,
+				Reason:    "hash_required: package integrity not in lockfile",
+				Rule:      "require_hash:true",
+			})
+			continue
+		}
+
+		score := s.computeScore(ctx, node, lf, cache, auditCVEs)
 
 		if score.total < pol.Trust.MinScore {
 			violations = append(violations, policy.Violation{
-				PackageID: fmt.Sprintf("%s@%s", node.Name, node.Version),
-				Reason:    fmt.Sprintf("trust_score_too_low: %d/%d", score.total, pol.Trust.MinScore),
-				Rule:      fmt.Sprintf("min_score:%d", pol.Trust.MinScore),
+				PackageID: key,
+				Reason: fmt.Sprintf("trust_score: %d/%d (hash:%d, maturity:%d, dl:%d, cves:%d)",
+					score.total, pol.Trust.MinScore, score.hash, score.maturity, score.downloads, score.noCVEs),
+				Rule: fmt.Sprintf("min_score:%d", pol.Trust.MinScore),
 			})
 		}
 	}
@@ -113,7 +119,7 @@ func (s *Scorer) computeScore(ctx context.Context, node pkgmanager.PackageNode, 
 	hash := scoreHash(node, lf)
 	maturity := ScoreMaturity(node.Version)
 	downloads := s.scoreDownloadsCached(ctx, node.Name, cache)
-	noCVEs := scoreCVEs(node.Name, auditCVEs, cache)
+	noCVEs := scoreCVEs(node.Name, node.Version, auditCVEs, cache)
 
 	return computedScore{
 		total:     hash + maturity + downloads + noCVEs,
@@ -124,9 +130,16 @@ func (s *Scorer) computeScore(ctx context.Context, node pkgmanager.PackageNode, 
 	}
 }
 
-func scoreHash(node pkgmanager.PackageNode, lf *lockfile.Lockfile) int {
+func hasLockfileHash(node pkgmanager.PackageNode, lf *lockfile.Lockfile) bool {
 	key := fmt.Sprintf("%s@%s", node.Name, node.Version)
 	if entry, ok := lf.Packages[key]; ok && entry.Integrity != "" {
+		return true
+	}
+	return false
+}
+
+func scoreHash(node pkgmanager.PackageNode, lf *lockfile.Lockfile) int {
+	if hasLockfileHash(node, lf) {
 		return ptsHashVerified
 	}
 	return 0
@@ -167,13 +180,10 @@ func (s *Scorer) scoreDownloadsCached(ctx context.Context, pkgName string, cache
 		if ok {
 			return ScoreDownloadsByCount(entry.WeeklyDownloads)
 		}
-		return 0
+		return ptsMaxDownloads / 2
 	}
 
-	cache.Set(pkgName, CacheEntry{
-		FetchedAt:       time.Now().UTC().Format(time.RFC3339),
-		WeeklyDownloads: downloads,
-	})
+	cache.SetDownloads(pkgName, downloads)
 	return ScoreDownloadsByCount(downloads)
 }
 
@@ -222,22 +232,34 @@ func ScoreDownloadsByCount(n int) int {
 	}
 }
 
-func scoreCVEs(pkgName string, auditCVEs map[string][]string, cache *TrustCache) int {
+func scoreCVEs(pkgName, version string, auditCVEs map[string][]string, cache *TrustCache) int {
 	cves, hasAudit := auditCVEs[pkgName]
-	if !hasAudit {
-		entry, ok := cache.Get(pkgName)
-		if ok && len(entry.CVEs) > 0 {
+	if hasAudit {
+		if len(cves) > 0 {
+			cache.SetVersionCVEs(pkgName, version, cves)
 			return 0
 		}
-		if ok {
-			return ptsNoCVEs
+		cache.SetVersionCVEs(pkgName, version, nil)
+		return ptsNoCVEs
+	}
+
+	versionCVEs := cache.GetVersionCVEs(pkgName, version)
+	if versionCVEs != nil {
+		if len(versionCVEs) > 0 {
+			return 0
 		}
+		return ptsNoCVEs
+	}
+
+	entry, ok := cache.Get(pkgName)
+	if ok && len(entry.CVEs) > 0 {
 		return 0
 	}
-	if len(cves) > 0 {
-		return 0
+	if ok {
+		return ptsNoCVEs
 	}
-	return ptsNoCVEs
+
+	return ptsNoCVEs / 2
 }
 
 func (s *Scorer) fetchAuditCVEs(ctx context.Context) map[string][]string {
@@ -254,7 +276,6 @@ func (s *Scorer) fetchAuditCVEs(ctx context.Context) map[string][]string {
 type npmAuditVulnerability struct {
 	Name       string `json:"name"`
 	Severity   string `json:"severity"`
-	Range      string `json:"range"`
 }
 
 type npmAuditResponse struct {

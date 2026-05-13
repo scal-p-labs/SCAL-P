@@ -58,6 +58,68 @@ func TestCache_saveAndLoad(t *testing.T) {
 	}
 }
 
+func TestCache_versionAware(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "trust.json")
+
+	c, err := trust.LoadCache(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c.SetVersionCVEs("lodash", "4.17.21", []string{"GHSA-xxx"})
+	c.SetVersionCVEs("lodash", "4.17.20", nil)
+
+	cves := c.GetVersionCVEs("lodash", "4.17.21")
+	if len(cves) != 1 || cves[0] != "GHSA-xxx" {
+		t.Errorf("expected [GHSA-xxx] for 4.17.21, got %v", cves)
+	}
+
+	cves = c.GetVersionCVEs("lodash", "4.17.20")
+	if len(cves) != 0 {
+		t.Errorf("expected empty for 4.17.20, got %v", cves)
+	}
+
+	cves = c.GetVersionCVEs("lodash", "5.0.0")
+	if cves != nil {
+		t.Errorf("expected nil for unknown version, got %v", cves)
+	}
+
+	if err := c.Save(); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	c2, err := trust.LoadCache(path)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+
+	cves = c2.GetVersionCVEs("lodash", "4.17.21")
+	if len(cves) != 1 || cves[0] != "GHSA-xxx" {
+		t.Errorf("expected [GHSA-xxx] after reload, got %v", cves)
+	}
+}
+
+func TestCache_setDownloads(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "trust.json")
+
+	c, err := trust.LoadCache(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c.SetDownloads("lodash", 50000)
+
+	entry, ok := c.Get("lodash")
+	if !ok {
+		t.Fatal("expected entry after SetDownloads")
+	}
+	if entry.WeeklyDownloads != 50000 {
+		t.Errorf("expected 50000 downloads, got %d", entry.WeeklyDownloads)
+	}
+}
+
 func TestCache_saveWithoutChanges(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "trust.json")

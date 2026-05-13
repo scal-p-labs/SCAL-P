@@ -14,8 +14,8 @@ A deterministic score (0–80) for each dependency, computed from four factors:
 |--------|---------|--------|----------------|
 | Hash verified | 30 | `.scalp/lockfile.json` | yes |
 | Version >= 1.0.0 | 15 | lockfile | yes |
-| Weekly downloads | 20 | `api.npmjs.org` | degraded (cached) |
-| No active CVEs | 15 | `npm audit --json` | degraded (cached) |
+| Weekly downloads | 20 | `api.npmjs.org` | degraded (10 pts) |
+| No active CVEs | 15 | `npm audit --json` | degraded (7 pts) |
 
 If the score is below `trust.min_score` in your policy, it's a violation — same as a denied package.
 
@@ -23,7 +23,8 @@ If the score is below `trust.min_score` in your policy, it's a violation — sam
 {
   "trust": {
     "mode": "allowlist",
-    "min_score": 60
+    "min_score": 60,
+    "require_hash": true
   }
 }
 ```
@@ -32,11 +33,60 @@ If the score is below `trust.min_score` in your policy, it's a violation — sam
 
 ---
 
+## Unknown vs Bad
+
+This is the key distinction that makes the score fair when offline.
+
+**Unknown** = we can't check right now (no internet, no audit data, no cache). You get **half points** as a penalty, not zero. No one likes uncertainty, but we don't assume the worst.
+
+**Bad** = we checked and the data says it's bad. You get **0**.
+
+| Factor | Unknown (offline/no data) | Bad (checked & failed) |
+|--------|---------------------------|----------------------|
+| Downloads | 10 pts | 0 pts (< 100/week) |
+| CVEs | 7 pts | 0 pts (open CVEs found) |
+
+Download example:
+- Offline, no cache → 10 pts (unknown)
+- Online, 50 downloads/week → 0 pts (bad — low popularity)
+- Online, 500K downloads/week → 20 pts (good)
+
+CVE example:
+- Pre-install (no node_modules to audit) → 7 pts (unknown)
+- `npm audit` ran, found CVEs for this package → 0 pts
+- `npm audit` ran, no CVEs → 15 pts
+
+---
+
+## Hard fail: `require_hash`
+
+```json
+{ "trust": { "require_hash": true } }
+```
+
+When `require_hash` is true, any package that lacks a lockfile integrity entry is an **automatic violation** — regardless of total score. The violation says `hash_required` and the package is skipped from trust scoring entirely.
+
+This is your "supply chain minimum" switch. If a package wasn't installed through SCAL-P's guarded flow (or was tampered with after), you want to know immediately — not just see a lower score.
+
+`require_hash: false` (default) — hash contributes 30 pts to the score but missing it doesn't block.
+
+Both `require_hash` and `min_score` can be active at the same time and are enforced independently:
+
+```json
+{ "trust": { "require_hash": true, "min_score": 50 } }
+```
+
+A package with no hash → violation (hash_required).  
+A package with hash but score 30/50 → violation (trust_score_too_low).  
+A package with hash and score 65/50 → passes.
+
+---
+
 ## The four factors
 
 ### Hash verified (30 pts)
 
-Your lockfile already stores SHA-512 hashes of installed packages (`SyncWithTree`). If a package has a non-empty integrity entry, that's 30 points. No entry = 0.
+Your lockfile already stores SHA-512 hashes of installed packages (`SyncWithTree`). If a package has a non-empty integrity entry, that's 30 points. No entry = 0 (or `hash_required` violation if enabled).
 
 This rewards packages that were installed through SCAL-P's guarded flow. Manual installs or lockfile edits get 0.
 
@@ -56,15 +106,24 @@ Thresholds are logarithmic:
 | 10,000–99,999 | 15 |
 | 100,000+ | 20 |
 
-Fetched from `GET https://api.npmjs.org/downloads/point/last-week/{name}`. Cached in `.scalp/cache/trust.json` for 7 days. Cache miss + network failure = degraded score (no points, keeps using stale cache if available).
+Fetched from `GET https://api.npmjs.org/downloads/point/last-week/{name}`. Cached in `.scalp/cache/trust.json` for 7 days.
+
+Network failure with no cache → **10 pts** (unknown). Network failure with stale cache → uses stale cache.
 
 HTTP call has a 10s timeout. If it fails, the scorer moves on — no blocking.
 
-### No active CVEs (15 pts)
+### No active CVEs (0 or 15 pts)
 
-Runs `npm audit --json` once per evaluation, maps vulnerabilities by package name. If the audit says your package has open CVEs, you get 0. If clean, 15.
+Runs `npm audit --json` once per evaluation, maps vulnerabilities by package **and version**.
 
-In guarded mode (pre-install), there's no node_modules to audit — so this factor uses whatever is in cache, or gets 0. The other three factors still contribute normally.
+**npm audit succeeded:**
+- Package has open CVEs → 0 pts
+- Package has no CVEs → 15 pts
+
+**npm audit failed (pre-install, no lockfile, etc.):**
+- Cache has a CVE entry for this specific version → 0 pts (previously confirmed bad)
+- Cache has a clean entry for this version → 15 pts (previously confirmed clean)
+- No cache for this version → **7 pts** (unknown)
 
 ---
 
@@ -77,26 +136,43 @@ File: `.scalp/cache/trust.json` — auto-managed, never commit.
   "lodash": {
     "fetched_at": "2026-05-13T12:00:00Z",
     "weekly_downloads": 142536,
-    "cves": []
+    "versions": {
+      "4.17.21": {
+        "fetched_at": "2026-05-13T12:00:00Z",
+        "cves": []
+      },
+      "4.17.20": {
+        "fetched_at": "2026-05-10T12:00:00Z",
+        "cves": ["GHSA-xxx"]
+      }
+    }
   }
 }
 ```
 
-Keys are package names (no version — download counts and CVEs are per-name). TTL is 7 days from `fetched_at`.
+Top-level keys are package names. `weekly_downloads` is per-package (same for all versions). `versions` maps exact version strings to per-version data (like CVEs, which can differ between versions).
+
+TTL is 7 days from `fetched_at` for the top-level entry. Per-version entries have their own `fetched_at`.
 
 The scorer loads the cache once at the start of `Evaluate()`, reads/writes entries during scoring, and saves at the end — but only if something changed (dirty flag).
 
 ---
 
-## What it does NOT do (v0.2)
+## Violation messages
 
-- No 2FA / verified email (npm doesn't expose this per-package)
-- No Sigstore / provenance (v0.3)
-- No typosquatting detection
-- No per-version download tracking (it's per-package)
-- No persistent network daemon — every CLI call is stateless
+Trust violations include a breakdown so you know why:
 
-If you need higher granularity, `min_score: 60` with the current factors means a package needs hash + maturity + decent downloads or CVEs to pass. 60 from 80 available is a reasonable bar.
+```
+trust_score: 17/50 (hash:0, maturity:0, dl:10, cves:7)
+```
+
+This tells you: no hash, no maturity, unknown downloads (10/20), unknown CVEs (7/15). One glance and you know the package is new and offline.
+
+```
+hash_required: package integrity not in lockfile
+```
+
+This tells you: `require_hash` is on and this package isn't tracked.
 
 ---
 
@@ -112,11 +188,20 @@ There's no separate enforcement mode for trust. If you want trust to block but a
 
 ---
 
+## What it does NOT do (v0.2)
+
+- No 2FA / verified email (npm doesn't expose this per-package)
+- No Sigstore / provenance (v0.3)
+- No typosquatting detection
+- No persistent network daemon — every CLI call is stateless
+
+---
+
 ## Code layout
 
 ```
 internal/trust/
-├── cache.go        — TrustCache: load, save, TTL, concurrent-safe
+├── cache.go        — TrustCache: load, save, TTL, version-aware, concurrent-safe
 ├── cache_test.go
 ├── score.go        — Scorer: Evaluate(), 4 factor funcs, npm API client
 └── score_test.go   — httptest-mocked API, no real network

@@ -21,8 +21,9 @@ type Policy struct {
 
 // Trust controls the trust evaluation mode and optional minimum trust score.
 type Trust struct {
-    Mode     string `json:"mode"`
-    MinScore int    `json:"min_score,omitempty"`
+    Mode        string `json:"mode"`
+    MinScore    int    `json:"min_score,omitempty"`
+    RequireHash bool   `json:"require_hash,omitempty"`
 }
 
 // Packages contains allow and deny rules.

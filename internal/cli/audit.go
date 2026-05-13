@@ -70,7 +70,7 @@ func runAudit(args []string) error {
 		return err
 	}
 
-	if pol.Trust.MinScore > 0 {
+	if pol.Trust.MinScore > 0 || pol.Trust.RequireHash {
 		nodes := pkgmanager.Flatten(depTree)
 		scorer := trust.NewScorer(trust.DefaultCacheFile)
 		trustVs, tvErr := scorer.Evaluate(ctx, pol, nodes, &lf)
