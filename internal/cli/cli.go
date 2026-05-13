@@ -57,12 +57,12 @@ Usage:
   scalp policy check [flags]
 
 Commands:
-  install       install packages via npm/pnpm/yarn with optional enforcement
+  install       install packages via npm/pnpm with optional enforcement
   audit         validate lockfile vs node_modules
   policy check  evaluate policy without installing
 
 Global flags:
-  --pm string       package manager: npm|pnpm|yarn (default "npm")
+  --pm string       package manager: npm|pnpm (default "npm")
   --guarded         enforce policy and hash checks before install
   --policy string   policy path (default ".scalp/policy.json")
   --ci              set enforcement to block on violation

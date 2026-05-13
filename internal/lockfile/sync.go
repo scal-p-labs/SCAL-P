@@ -18,8 +18,18 @@ func SyncWithTree(ctx context.Context, lf *Lockfile, tree pkgmanager.DependencyT
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	for _, node := range nodes {
-		pkgDir := pm.LocalPath(node.Name)
+		pkgDir := node.Path
+		if pkgDir == "" {
+			pkgDir = pm.LocalPath(node.Name)
+		}
 		if !hash.IsDir(pkgDir) {
+			events = append(events, audit.Event{
+				Timestamp: now,
+				Event:     "hash_skipped",
+				Package:   fmt.Sprintf("%s@%s", node.Name, node.Version),
+				Status:    "warn",
+				Reason:    "package_dir_not_found",
+			})
 			continue
 		}
 
@@ -72,7 +82,10 @@ func VerifyAgainstTree(ctx context.Context, lf *Lockfile, tree pkgmanager.Depend
 			continue
 		}
 
-		pkgDir := pm.LocalPath(node.Name)
+		pkgDir := node.Path
+		if pkgDir == "" {
+			pkgDir = pm.LocalPath(node.Name)
+		}
 		if !hash.IsDir(pkgDir) {
 			violations = append(violations, policy.Violation{
 				PackageID: key,

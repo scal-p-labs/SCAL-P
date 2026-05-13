@@ -120,7 +120,6 @@ func TestIsSupported(t *testing.T) {
 	}{
 		{"npm", true},
 		{"pnpm", true},
-		{"yarn", true},
 		{"pip", false},
 		{"cargo", false},
 		{"", false},

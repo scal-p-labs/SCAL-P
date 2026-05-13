@@ -77,7 +77,7 @@ func TestSyncWithTree(t *testing.T) {
 		}
 	})
 
-	t.Run("missing package dir is skipped", func(t *testing.T) {
+	t.Run("missing package dir emits warning event", func(t *testing.T) {
 		dir := t.TempDir()
 		old := chdir(t, dir)
 		defer restoreWd(t, old)
@@ -95,8 +95,14 @@ func TestSyncWithTree(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(events) != 0 {
-			t.Errorf("expected 0 events for missing dir, got %d", len(events))
+		if len(events) != 1 {
+			t.Fatalf("expected 1 event for missing dir, got %d", len(events))
+		}
+		if events[0].Event != "hash_skipped" {
+			t.Errorf("expected hash_skipped event, got %s", events[0].Event)
+		}
+		if events[0].Reason != "package_dir_not_found" {
+			t.Errorf("expected package_dir_not_found reason, got %s", events[0].Reason)
 		}
 	})
 

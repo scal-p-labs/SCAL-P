@@ -1,11 +1,14 @@
 package pnpm
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"scal-p/internal/ctxutil"
 	"scal-p/internal/pkgmanager"
@@ -88,7 +91,6 @@ func (a *Adapter) GetTree(ctx context.Context) (pkgmanager.DependencyTree, error
 		return pkgmanager.DependencyTree{}, fmt.Errorf("failed to run pnpm ls: %w", err)
 	}
 
-	// pnpm ls --json returns an array with a single project entry.
 	var entries []pnpmListEntry
 	if err := json.Unmarshal(output, &entries); err != nil {
 		return pkgmanager.DependencyTree{}, fmt.Errorf("invalid pnpm ls output: %w", err)
@@ -107,7 +109,6 @@ func (a *Adapter) GetTree(ctx context.Context) (pkgmanager.DependencyTree, error
 	return tree, nil
 }
 
-// convertPnpmDeps converts pnpm's dependency format to pkgmanager.DependencyRef.
 func convertPnpmDeps(deps map[string]pnpmDependencyRef) map[string]pkgmanager.DependencyRef {
 	if len(deps) == 0 {
 		return nil
@@ -140,12 +141,165 @@ func (a *Adapter) Install(ctx context.Context, args ...string) error {
 	return nil
 }
 
+// ParseLockfile reads pnpm-lock.yaml and returns a flat list of PackageNode.
+// Unlike GetTree, this works without node_modules being installed.
 func (a *Adapter) ParseLockfile(ctx context.Context) ([]pkgmanager.PackageNode, error) {
-	tree, err := a.GetTree(ctx)
-	if err != nil {
+	return ParsePnpmLockfile(ctx)
+}
+
+// ParsePnpmLockfile reads pnpm-lock.yaml and returns a flat list of PackageNode.
+func ParsePnpmLockfile(ctx context.Context) ([]pkgmanager.PackageNode, error) {
+	if err := ctxutil.Check(ctx); err != nil {
 		return nil, err
 	}
-	return pkgmanager.Flatten(tree), nil
+
+	data, err := os.ReadFile("pnpm-lock.yaml")
+	if err != nil {
+		return nil, fmt.Errorf("reading pnpm-lock.yaml: %w", err)
+	}
+
+	return parseLockfileYAML(data)
+}
+
+// lockfilePkgEntry holds parsed data for a single package in pnpm-lock.yaml.
+type lockfilePkgEntry struct {
+	name      string
+	version   string
+	integrity string
+	resolved  string
+}
+
+func parseLockfileYAML(data []byte) ([]pkgmanager.PackageNode, error) {
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+
+	var entries []lockfilePkgEntry
+	var current *lockfilePkgEntry
+	inPackages := false
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+
+		if !inPackages {
+			if trimmed == "packages:" {
+				inPackages = true
+			}
+			continue
+		}
+
+		indent := countIndent(line)
+
+		if indent == 0 && trimmed != "" {
+			break
+		}
+
+		if indent == 2 && strings.HasSuffix(trimmed, ":") {
+			if current != nil {
+				entries = append(entries, *current)
+			}
+
+			key := strings.TrimSuffix(trimmed, ":")
+			current = parseLockfileKey(key)
+			continue
+		}
+
+		if current != nil && indent == 4 {
+			if strings.HasPrefix(trimmed, "resolution:") {
+				current.integrity = extractIntegrity(trimmed)
+			}
+		}
+	}
+
+	if current != nil {
+		entries = append(entries, *current)
+	}
+
+	nodes := make([]pkgmanager.PackageNode, 0, len(entries))
+	for _, e := range entries {
+		nodes = append(nodes, pkgmanager.PackageNode{
+			Name:      e.name,
+			Version:   e.version,
+			Resolved:  e.resolved,
+			Integrity: e.integrity,
+			Path:      "node_modules/" + e.name,
+			Depth:     0,
+		})
+	}
+
+	return nodes, nil
+}
+
+func countIndent(line string) int {
+	n := 0
+	for _, c := range line {
+		switch c {
+		case ' ':
+			n++
+		case '\t':
+			n += 2
+		default:
+			return n
+		}
+	}
+	return n
+}
+
+func parseLockfileKey(key string) *lockfilePkgEntry {
+	key = strings.TrimPrefix(key, "/")
+
+	lastSlash := strings.LastIndex(key, "/")
+	if lastSlash == -1 {
+		return nil
+	}
+	name := key[:lastSlash]
+	version := key[lastSlash+1:]
+
+	name = strings.ReplaceAll(name, "%2f", "/")
+	name = strings.ReplaceAll(name, "%2F", "/")
+
+	return &lockfilePkgEntry{
+		name:    name,
+		version: version,
+	}
+}
+
+func extractIntegrity(line string) string {
+	idx := strings.Index(line, "{integrity:")
+	if idx == -1 {
+		idx = strings.Index(line, "integrity: ")
+		if idx == -1 {
+			idx = strings.Index(line, "integrity:")
+			if idx == -1 {
+				return ""
+			}
+		}
+	}
+
+	rest := line[idx:]
+	colonIdx := strings.Index(rest, ":")
+	if colonIdx == -1 {
+		return ""
+	}
+
+	rest = rest[colonIdx+1:]
+	rest = strings.TrimSpace(rest)
+
+	end := strings.Index(rest, "}")
+	if end != -1 {
+		rest = rest[:end]
+	}
+
+	rest = strings.TrimSpace(rest)
+	rest = strings.Trim(rest, "\"'")
+
+	// Handle trailing , or whitespace
+	rest = strings.TrimRight(rest, ", \t")
+
+	return rest
 }
 
 // LocalPath returns the node_modules path for a package.

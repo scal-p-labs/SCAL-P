@@ -46,7 +46,9 @@ func runInstall(args []string) error {
 
 	auditLogger := audit.NewLogger(".scalp/audit.log")
 	defer func() {
-		_ = auditLogger.Close()
+		if err := auditLogger.Close(); err != nil {
+			slog.Warn("closing audit log", "err", err)
+		}
 	}()
 
 	mode := pol.Enforcement.DefaultMode
