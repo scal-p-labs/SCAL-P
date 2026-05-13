@@ -19,9 +19,10 @@ type Policy struct {
     Enforcement  Enforcement  `json:"enforcement"`
 }
 
-// Trust controls the trust evaluation mode.
+// Trust controls the trust evaluation mode and optional minimum trust score.
 type Trust struct {
-    Mode string `json:"mode"`
+    Mode     string `json:"mode"`
+    MinScore int    `json:"min_score,omitempty"`
 }
 
 // Packages contains allow and deny rules.

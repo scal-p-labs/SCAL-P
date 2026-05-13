@@ -9,6 +9,7 @@ import (
 	"scal-p/internal/lockfile"
 	"scal-p/internal/pkgmanager"
 	"scal-p/internal/policy"
+	"scal-p/internal/trust"
 )
 
 func runAudit(args []string) error {
@@ -69,17 +70,24 @@ func runAudit(args []string) error {
 		return err
 	}
 
+	if pol.Trust.MinScore > 0 {
+		nodes := pkgmanager.Flatten(depTree)
+		scorer := trust.NewScorer(trust.DefaultCacheFile)
+		trustVs, tvErr := scorer.Evaluate(ctx, pol, nodes, &lf)
+		if tvErr != nil {
+			slog.Warn("trust score", "err", tvErr)
+		} else {
+			violations = append(violations, trustVs...)
+		}
+	}
+
 	if err := auditLogger.Log(ctx, events); err != nil {
 		return err
 	}
 
-    if len(violations) > 0 {
-        if err := policy.ApplyEnforcement(enforcement, violations); err != nil {
-            return err
-        }
-	} else {
-		slog.Info("audit ok")
+	if len(violations) > 0 {
+		return policy.ApplyEnforcement(enforcement, violations)
 	}
-
-    return nil
+	slog.Info("audit ok")
+	return nil
 }
