@@ -42,6 +42,7 @@ type Scorer struct {
 	cachePath string
 	client    *http.Client
 	apiURL    string
+	auditFunc func(ctx context.Context) map[string][]string
 }
 
 func NewScorer(cachePath string) *Scorer {
@@ -58,6 +59,10 @@ func (s *Scorer) SetHTTPClient(c *http.Client) {
 
 func (s *Scorer) SetAPIURL(url string) {
 	s.apiURL = url
+}
+
+func (s *Scorer) SetAuditFunc(fn func(ctx context.Context) map[string][]string) {
+	s.auditFunc = fn
 }
 
 func (s *Scorer) Evaluate(ctx context.Context, pol policy.Policy, nodes []pkgmanager.PackageNode, lf *lockfile.Lockfile) ([]policy.Violation, error) {
@@ -266,6 +271,9 @@ func scoreCVEs(pkgName, version string, auditCVEs map[string][]string, cache *Tr
 }
 
 func (s *Scorer) fetchAuditCVEs(ctx context.Context) map[string][]string {
+	if s.auditFunc != nil {
+		return s.auditFunc(ctx)
+	}
 	cmd := exec.CommandContext(ctx, "npm", "audit", "--json")
 	cmd.Stderr = os.Stderr
 	output, err := cmd.Output()

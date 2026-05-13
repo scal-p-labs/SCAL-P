@@ -315,6 +315,121 @@ func TestEvaluate_withDownloadScore(t *testing.T) {
 	}
 }
 
+func TestCVEScoring(t *testing.T) {
+	server, close := mockDownloadsServer(t, 0)
+	defer close()
+
+	t.Run("npm audit succeeds with CVEs gives 0 pts", func(t *testing.T) {
+		lf := lockfile.Lockfile{
+			LockVersion: 1,
+			Packages: map[string]lockfile.LockEntry{
+				"evil@1.0.0": {Integrity: "sha512-abc"},
+			},
+		}
+		node := pkgmanager.PackageNode{Name: "evil", Version: "1.0.0"}
+		pol := policy.Policy{Trust: policy.Trust{MinScore: 100}}
+
+		scorer := testScorer(t, server)
+		scorer.SetAuditFunc(func(ctx context.Context) map[string][]string {
+			return map[string][]string{"evil": {"critical"}}
+		})
+
+		violations, err := scorer.Evaluate(context.Background(), pol, []pkgmanager.PackageNode{node}, &lf)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(violations) != 1 {
+			t.Fatalf("expected 1 violation for package with CVEs, got %d", len(violations))
+		}
+	})
+
+	t.Run("npm audit succeeds without CVEs gives 15 pts", func(t *testing.T) {
+		lf := lockfile.Lockfile{
+			LockVersion: 1,
+			Packages: map[string]lockfile.LockEntry{
+				"clean@1.0.0": {Integrity: "sha512-abc"},
+			},
+		}
+		node := pkgmanager.PackageNode{Name: "clean", Version: "1.0.0"}
+		pol := policy.Policy{Trust: policy.Trust{MinScore: 60}}
+
+		scorer := testScorer(t, server)
+		scorer.SetAuditFunc(func(ctx context.Context) map[string][]string {
+			return map[string][]string{}
+		})
+
+		violations, err := scorer.Evaluate(context.Background(), pol, []pkgmanager.PackageNode{node}, &lf)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(violations) != 0 {
+			t.Errorf("expected 0 violations for package without CVEs, got %d", len(violations))
+		}
+	})
+
+	t.Run("no audit data with version cache CVEs gives 0 pts", func(t *testing.T) {
+		dir := t.TempDir()
+		cachePath := dir + "/trust.json"
+		cache, _ := trust.LoadCache(cachePath)
+		cache.SetVersionCVEs("pkg", "1.0.0", []string{"GHSA-xxx"})
+		cache.Save()
+
+		lf := lockfile.Lockfile{
+			LockVersion: 1,
+			Packages: map[string]lockfile.LockEntry{
+				"pkg@1.0.0": {Integrity: "sha512-abc"},
+			},
+		}
+		node := pkgmanager.PackageNode{Name: "pkg", Version: "1.0.0"}
+		pol := policy.Policy{Trust: policy.Trust{MinScore: 50}}
+
+		scorer := trust.NewScorer(cachePath)
+		scorer.SetHTTPClient(server.Client())
+		scorer.SetAPIURL(server.URL)
+		scorer.SetAuditFunc(func(ctx context.Context) map[string][]string {
+			return nil
+		})
+
+		violations, err := scorer.Evaluate(context.Background(), pol, []pkgmanager.PackageNode{node}, &lf)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(violations) != 1 {
+			t.Fatalf("expected 1 violation for cached-CVE package, got %d", len(violations))
+		}
+	})
+
+	t.Run("no audit data, no cache gives 7 pts (half)", func(t *testing.T) {
+		lf := lockfile.Lockfile{
+			LockVersion: 1,
+			Packages: map[string]lockfile.LockEntry{
+				"unknown@1.0.0": {Integrity: "sha512-abc"},
+			},
+		}
+		node := pkgmanager.PackageNode{Name: "unknown", Version: "1.0.0"}
+		pol := policy.Policy{Trust: policy.Trust{MinScore: 70}}
+
+		scorer := trust.NewScorer(t.TempDir() + "/trust.json")
+		scorer.SetHTTPClient(server.Client())
+		scorer.SetAPIURL(server.URL)
+		scorer.SetAuditFunc(func(ctx context.Context) map[string][]string {
+			return nil
+		})
+
+		violations, err := scorer.Evaluate(context.Background(), pol, []pkgmanager.PackageNode{node}, &lf)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		score := 30 + 15 + 10 + 7 // hash + maturity + dl half + cve half
+		if score >= 70 {
+			t.Fatal("test setup error: score too high for violation")
+		}
+		if len(violations) != 1 {
+			t.Errorf("expected 1 violation for unknown package (score=%d < 70), got %d", score, len(violations))
+		}
+	})
+}
+
 func TestScoreBreakdown(t *testing.T) {
 	b := trust.ScoreBreakdown{
 		HashVerified: 30,
