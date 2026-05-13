@@ -370,9 +370,14 @@ func TestCVEScoring(t *testing.T) {
 	t.Run("no audit data with version cache CVEs gives 0 pts", func(t *testing.T) {
 		dir := t.TempDir()
 		cachePath := dir + "/trust.json"
-		cache, _ := trust.LoadCache(cachePath)
+		cache, err := trust.LoadCache(cachePath)
+		if err != nil {
+			t.Fatal(err)
+		}
 		cache.SetVersionCVEs("pkg", "1.0.0", []string{"GHSA-xxx"})
-		cache.Save()
+		if err := cache.Save(); err != nil {
+			t.Fatal(err)
+		}
 
 		lf := lockfile.Lockfile{
 			LockVersion: 1,
