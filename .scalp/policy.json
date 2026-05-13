@@ -1,5 +1,5 @@
 {
-  "$schema": ".scalp/policy.schema.json",
+  "$schema": "https://raw.githubusercontent.com/CarlosEduJs/SCAL-P/refs/heads/main/.scalp/policy.schema.json",
   "version": 1,
   "trust": {
     "mode": "audit-only"
