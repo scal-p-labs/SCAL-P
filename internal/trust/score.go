@@ -131,6 +131,9 @@ func (s *Scorer) computeScore(ctx context.Context, node pkgmanager.PackageNode, 
 }
 
 func hasLockfileHash(node pkgmanager.PackageNode, lf *lockfile.Lockfile) bool {
+	if lf == nil {
+		return false
+	}
 	key := fmt.Sprintf("%s@%s", node.Name, node.Version)
 	if entry, ok := lf.Packages[key]; ok && entry.Integrity != "" {
 		return true
