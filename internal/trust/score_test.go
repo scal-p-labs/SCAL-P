@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"scal-p/internal/lockfile"
 	"scal-p/internal/pkgmanager"
@@ -431,6 +433,116 @@ func TestCVEScoring(t *testing.T) {
 		}
 		if len(violations) != 1 {
 			t.Errorf("expected 1 violation for unknown package (score=%d < 70), got %d", score, len(violations))
+		}
+	})
+}
+
+func TestAdversarial_cachePoisoning(t *testing.T) {
+	server, close := mockDownloadsServer(t, 0)
+	defer close()
+
+	t.Run("stale cache with expired entry triggers refresh", func(t *testing.T) {
+		dir := t.TempDir()
+		cachePath := dir + "/trust.json"
+		cache, err := trust.LoadCache(cachePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		oldTime := time.Now().Add(-10 * 24 * time.Hour).UTC().Format(time.RFC3339)
+		cache.Set("old-pkg", trust.CacheEntry{
+			FetchedAt:       oldTime,
+			WeeklyDownloads: 9999999,
+		})
+		if err := cache.Save(); err != nil {
+			t.Fatal(err)
+		}
+
+		lf := lockfile.Lockfile{
+			LockVersion: 1,
+			Packages: map[string]lockfile.LockEntry{
+				"old-pkg@1.0.0": {Integrity: "sha512-abc"},
+			},
+		}
+		pol := policy.Policy{Trust: policy.Trust{MinScore: 50}}
+		scorer := trust.NewScorer(cachePath)
+		scorer.SetHTTPClient(server.Client())
+		scorer.SetAPIURL(server.URL)
+		scorer.SetAuditFunc(func(ctx context.Context) map[string][]string { return nil })
+
+		violations, err := scorer.Evaluate(context.Background(), pol, []pkgmanager.PackageNode{
+			{Name: "old-pkg", Version: "1.0.0"},
+		}, &lf)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		cache2, _ := trust.LoadCache(cachePath)
+		entry, ok := cache2.Get("old-pkg")
+		if !ok {
+			t.Fatal("expected entry in cache after evaluation")
+		}
+		if entry.WeeklyDownloads == 9999999 {
+			t.Error("expected stale download count to be refreshed")
+		}
+		if len(violations) != 0 {
+			t.Errorf("expected 0 violations, got %d", len(violations))
+		}
+	})
+
+	t.Run("cache with fake CVEs is treated as known bad", func(t *testing.T) {
+		dir := t.TempDir()
+		cachePath := dir + "/trust.json"
+		cache, err := trust.LoadCache(cachePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cache.SetVersionCVEs("poisoned", "1.0.0", []string{"GHSA-fake"})
+		if err := cache.Save(); err != nil {
+			t.Fatal(err)
+		}
+
+		lf := lockfile.Lockfile{
+			LockVersion: 1,
+			Packages: map[string]lockfile.LockEntry{
+				"poisoned@1.0.0": {Integrity: "sha512-abc"},
+			},
+		}
+		pol := policy.Policy{Trust: policy.Trust{MinScore: 50}}
+		scorer := trust.NewScorer(cachePath)
+		scorer.SetHTTPClient(server.Client())
+		scorer.SetAPIURL(server.URL)
+		scorer.SetAuditFunc(func(ctx context.Context) map[string][]string { return nil })
+
+		violations, err := scorer.Evaluate(context.Background(), pol, []pkgmanager.PackageNode{
+			{Name: "poisoned", Version: "1.0.0"},
+		}, &lf)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(violations) != 1 {
+			t.Errorf("expected 1 violation for poisoned cache (has fake CVEs), got %d", len(violations))
+		}
+	})
+
+	t.Run("corrupted cache JSON recovers gracefully", func(t *testing.T) {
+		dir := t.TempDir()
+		cachePath := dir + "/trust.json"
+		os.WriteFile(cachePath, []byte("{corrupted json"), 0o644) //nolint:errcheck
+
+		cache, err := trust.LoadCache(cachePath)
+		if err == nil {
+			t.Fatal("expected error for corrupted cache")
+		}
+		if cache != nil {
+			t.Errorf("expected nil cache on error, got %+v", cache)
+		}
+	})
+
+	t.Run("cache poisoned with future timestamp is not expired", func(t *testing.T) {
+		future := time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339)
+		entry := trust.CacheEntry{FetchedAt: future}
+		if trust.IsExpired(entry, 7*24*time.Hour) {
+			t.Error("expected future-dated entry to not be expired")
 		}
 	})
 }
