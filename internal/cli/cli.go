@@ -34,6 +34,8 @@ func Run(args []string) error {
 		return runInstall(args[1:])
 	case "audit":
 		return runAudit(args[1:])
+	case "ci":
+		return runCi(args[1:])
 	case "policy":
 		return runPolicy(args[1:])
 	case "help", "-h", "--help":
@@ -52,11 +54,13 @@ func usageText() string {
 
 Usage:
   scalp version
+  scalp ci [flags]
   scalp install [flags] [--] [pm args...]
   scalp audit [flags]
   scalp policy check [flags]
 
 Commands:
+  ci            resolve, evaluate, install, audit — single CI step (always blocks)
   install       install packages via npm/pnpm with optional enforcement
   audit         validate lockfile vs node_modules
   policy check  evaluate policy without installing
