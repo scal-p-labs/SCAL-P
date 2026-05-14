@@ -510,6 +510,44 @@ packages:
 		}
 	})
 
+	t.Run("handles @-separated version (alternative lockfile format)", func(t *testing.T) {
+		dir := t.TempDir()
+		oldWd, _ := os.Getwd()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := os.Chdir(oldWd); err != nil {
+				t.Error(err)
+			}
+		}()
+
+		lockfile := `lockfileVersion: '9.0'
+packages:
+  /lodash@4.17.21:
+    resolution: {integrity: sha512-test==}
+    dev: false
+`
+		if err := os.WriteFile("pnpm-lock.yaml", []byte(lockfile), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		a := &pnpm.Adapter{}
+		nodes, err := a.ParseLockfile(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(nodes) != 1 {
+			t.Fatalf("expected 1 node, got %d", len(nodes))
+		}
+		if nodes[0].Name != "lodash" {
+			t.Errorf("expected lodash, got %s", nodes[0].Name)
+		}
+		if nodes[0].Version != "4.17.21" {
+			t.Errorf("expected 4.17.21, got %s", nodes[0].Version)
+		}
+	})
+
 	t.Run("handles URL-encoded scoped package key", func(t *testing.T) {
 		dir := t.TempDir()
 		oldWd, _ := os.Getwd()

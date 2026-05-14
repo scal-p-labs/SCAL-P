@@ -262,12 +262,15 @@ func countIndent(line string) int {
 func parseLockfileKey(key string) *lockfilePkgEntry {
 	key = strings.TrimPrefix(key, "/")
 
-	lastSlash := strings.LastIndex(key, "/")
-	if lastSlash == -1 {
+	splitAt := strings.LastIndex(key, "/")
+	if splitAt == -1 {
+		splitAt = strings.LastIndex(key, "@")
+	}
+	if splitAt == -1 {
 		return nil
 	}
-	name := key[:lastSlash]
-	version := key[lastSlash+1:]
+	name := key[:splitAt]
+	version := key[splitAt+1:]
 
 	name = strings.ReplaceAll(name, "%2f", "/")
 	name = strings.ReplaceAll(name, "%2F", "/")
