@@ -87,17 +87,24 @@ func (a *Adapter) GetTree(ctx context.Context) (pkgmanager.DependencyTree, error
 
 	cmd := execCommand(ctx, "pnpm", "ls", "--json", "--depth", "Infinity")
 	cmd.Stderr = os.Stderr
-	output, err := cmd.Output()
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		var exitErr *exec.ExitError
-		if !errors.As(err, &exitErr) || len(output) == 0 {
-			return pkgmanager.DependencyTree{}, fmt.Errorf("pnpm ls failed: %w", err)
-		}
+		return pkgmanager.DependencyTree{}, fmt.Errorf("stdout pipe: %w", err)
+	}
+	if err := cmd.Start(); err != nil {
+		return pkgmanager.DependencyTree{}, fmt.Errorf("pnpm ls start: %w", err)
 	}
 
 	var entries []pnpmListEntry
-	if err := json.Unmarshal(output, &entries); err != nil {
+	if err := json.NewDecoder(stdout).Decode(&entries); err != nil {
 		return pkgmanager.DependencyTree{}, fmt.Errorf("invalid pnpm ls output: %w", err)
+	}
+
+	if err := cmd.Wait(); err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			return pkgmanager.DependencyTree{}, fmt.Errorf("pnpm ls failed: %w", err)
+		}
 	}
 
 	if len(entries) == 0 {

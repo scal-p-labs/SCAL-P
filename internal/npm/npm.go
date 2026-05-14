@@ -72,17 +72,24 @@ func GetDependencyTree(ctx context.Context) (pkgmanager.DependencyTree, error) {
 	}
 	cmd := execCommand(ctx, "npm", "ls", "--all", "--json")
 	cmd.Stderr = os.Stderr
-	output, err := cmd.Output()
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		var exitErr *exec.ExitError
-		if !errors.As(err, &exitErr) || len(output) == 0 {
-			return pkgmanager.DependencyTree{}, fmt.Errorf("npm ls failed: %w", err)
-		}
+		return pkgmanager.DependencyTree{}, fmt.Errorf("stdout pipe: %w", err)
+	}
+	if err := cmd.Start(); err != nil {
+		return pkgmanager.DependencyTree{}, fmt.Errorf("npm ls start: %w", err)
 	}
 
 	var tree pkgmanager.DependencyTree
-	if err := json.Unmarshal(output, &tree); err != nil {
+	if err := json.NewDecoder(stdout).Decode(&tree); err != nil {
 		return pkgmanager.DependencyTree{}, fmt.Errorf("invalid dependency tree: %w", err)
+	}
+
+	if err := cmd.Wait(); err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			return pkgmanager.DependencyTree{}, fmt.Errorf("npm ls failed: %w", err)
+		}
 	}
 	return tree, nil
 }
