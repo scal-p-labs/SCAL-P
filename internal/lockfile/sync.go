@@ -3,6 +3,7 @@ package lockfile
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"scal-p/internal/audit"
@@ -22,11 +23,8 @@ func SyncWithTree(ctx context.Context, lf *Lockfile, tree pkgmanager.DependencyT
 		if err := ctxutil.Check(ctx); err != nil {
 			return nil, err
 		}
-		pkgDir := node.Path
+		pkgDir := resolvePkgDir(node, pm)
 		if pkgDir == "" {
-			pkgDir = pm.LocalPath(node.Name)
-		}
-		if !hash.IsDir(pkgDir) {
 			events = append(events, audit.Event{
 				Timestamp: now,
 				Event:     "hash_skipped",
@@ -72,15 +70,11 @@ func VerifyAgainstTree(ctx context.Context, lf *Lockfile, tree pkgmanager.Depend
 			return nil, nil, err
 		}
 		key := fmt.Sprintf("%s@%s", node.Name, node.Version)
-
-		pkgDir := node.Path
-		if pkgDir == "" {
-			pkgDir = pm.LocalPath(node.Name)
-		}
+		pkgDir := resolvePkgDir(node, pm)
 
 		entry, ok := lf.Packages[key]
 		if !ok {
-			if !hash.IsDir(pkgDir) {
+			if pkgDir == "" {
 				continue
 			}
 			violations = append(violations, policy.Violation{
@@ -98,7 +92,7 @@ func VerifyAgainstTree(ctx context.Context, lf *Lockfile, tree pkgmanager.Depend
 			continue
 		}
 
-		if !hash.IsDir(pkgDir) {
+		if pkgDir == "" {
 			violations = append(violations, policy.Violation{
 				PackageID: key,
 				Reason:    "package_not_installed",
@@ -138,6 +132,24 @@ func VerifyAgainstTree(ctx context.Context, lf *Lockfile, tree pkgmanager.Depend
 	}
 
 	return violations, events, nil
+}
+
+// resolvePkgDir tries the path reported by npm ls first, then falls back
+// to node_modules/<name>. Some npm versions report nested paths for hoisted
+// packages that don't actually exist on disk.
+func resolvePkgDir(node pkgmanager.PackageNode, pm pkgmanager.PackageManager) string {
+	if node.Path != "" && hash.IsDir(node.Path) {
+		return node.Path
+	}
+	fallback := pm.LocalPath(node.Name)
+	if hash.IsDir(fallback) {
+		if node.Path != "" && node.Path != fallback {
+			slog.Debug("package resolved via fallback",
+				"pkg", node.Name, "reported", node.Path, "found", fallback)
+		}
+		return fallback
+	}
+	return ""
 }
 
 func statusFromMatch(match bool) string {
