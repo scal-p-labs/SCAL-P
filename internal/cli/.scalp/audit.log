@@ -104,3 +104,13 @@
 {"ts":"2026-05-14T18:58:14Z","event":"binary_verify","pkg":"good.tar.gz","status":"mismatch"}
 {"ts":"2026-05-14T18:58:16Z","event":"binary_verify","pkg":"release.tar.gz","status":"verified","hash_match":true}
 {"ts":"2026-05-14T18:58:16Z","event":"binary_verify","pkg":"release.tar.gz","status":"mismatch"}
+{"ts":"2026-05-14T19:11:01Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
+{"ts":"2026-05-14T19:11:02Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
+{"ts":"2026-05-14T19:11:03Z","event":"binary_verify","pkg":"good.tar.gz","status":"mismatch"}
+{"ts":"2026-05-14T19:11:05Z","event":"binary_verify","pkg":"release.tar.gz","status":"verified","hash_match":true}
+{"ts":"2026-05-14T19:11:05Z","event":"binary_verify","pkg":"release.tar.gz","status":"mismatch"}
+{"ts":"2026-05-14T19:11:18Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
+{"ts":"2026-05-14T19:11:19Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
+{"ts":"2026-05-14T19:11:20Z","event":"binary_verify","pkg":"good.tar.gz","status":"mismatch"}
+{"ts":"2026-05-14T19:11:22Z","event":"binary_verify","pkg":"release.tar.gz","status":"verified","hash_match":true}
+{"ts":"2026-05-14T19:11:22Z","event":"binary_verify","pkg":"release.tar.gz","status":"mismatch"}
