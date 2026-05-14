@@ -60,5 +60,5 @@ func Save(ctx context.Context, path string, lf Lockfile) error {
 	if err != nil {
 		return fmt.Errorf("encode lockfile: %w", err)
 	}
-	return ioutil.WriteFileAtomic(path, data, 0o644)
+	return ioutil.WriteFileAtomic(path, data)
 }
