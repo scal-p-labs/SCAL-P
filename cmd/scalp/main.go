@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
 
 	"scal-p/internal/cli"
 )
@@ -17,9 +19,12 @@ func main() {
 		}
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
 	slog.SetDefault(slog.New(cli.NewHandler(debug)))
 
-	if err := cli.Run(os.Args[1:]); err != nil {
+	if err := cli.RunContext(ctx, os.Args[1:]); err != nil {
 		if debug {
 			slog.Error(err.Error())
 		} else {
