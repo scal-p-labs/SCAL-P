@@ -34,3 +34,8 @@
 {"ts":"2026-05-13T02:08:50Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
 {"ts":"2026-05-13T02:09:16Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
 {"ts":"2026-05-13T02:09:16Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
+{"ts":"2026-05-14T12:11:06Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
+{"ts":"2026-05-14T12:11:07Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
+{"ts":"2026-05-14T12:11:08Z","event":"binary_verify","pkg":"good.tar.gz","status":"mismatch"}
+{"ts":"2026-05-14T12:11:10Z","event":"binary_verify","pkg":"release.tar.gz","status":"verified","hash_match":true}
+{"ts":"2026-05-14T12:11:10Z","event":"binary_verify","pkg":"release.tar.gz","status":"mismatch"}
