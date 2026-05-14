@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -22,6 +23,10 @@ func init() {
 }
 
 func Run(args []string) error {
+	return RunContext(context.Background(), args)
+}
+
+func RunContext(ctx context.Context, args []string) error {
 	args = filterGlobalFlags(args)
 
 	if len(args) == 0 {
