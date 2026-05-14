@@ -81,7 +81,7 @@ func ResolveViaPackageLockOnly(ctx context.Context, args ...string) error {
 		return err
 	}
 
-	cmdArgs := append([]string{"install", "--package-lock-only"}, args...)
+	cmdArgs := append([]string{"install", "--package-lock-only", "--ignore-scripts"}, args...)
 	cmd := execCommand(ctx, "npm", cmdArgs...)
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {

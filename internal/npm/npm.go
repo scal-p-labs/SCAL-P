@@ -3,6 +3,7 @@ package npm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -73,7 +74,10 @@ func GetDependencyTree(ctx context.Context) (pkgmanager.DependencyTree, error) {
 	cmd.Stderr = os.Stderr
 	output, err := cmd.Output()
 	if err != nil {
-		return pkgmanager.DependencyTree{}, fmt.Errorf("failed to run npm ls: %w", err)
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) || len(output) == 0 {
+			return pkgmanager.DependencyTree{}, fmt.Errorf("npm ls failed: %w", err)
+		}
 	}
 
 	var tree pkgmanager.DependencyTree
