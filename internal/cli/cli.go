@@ -22,6 +22,8 @@ func init() {
 }
 
 func Run(args []string) error {
+	args = filterGlobalFlags(args)
+
 	if len(args) == 0 {
 		return usageError()
 	}
@@ -114,4 +116,15 @@ func newFlagSet(name string) *flag.FlagSet {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	return fs
+}
+
+func filterGlobalFlags(args []string) []string {
+	var out []string
+	for _, a := range args {
+		if a == "--debug" {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
 }

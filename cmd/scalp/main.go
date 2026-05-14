@@ -9,11 +9,22 @@ import (
 )
 
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	slog.SetDefault(logger)
+	debug := false
+	for _, arg := range os.Args[1:] {
+		if arg == "--debug" {
+			debug = true
+			break
+		}
+	}
+
+	slog.SetDefault(slog.New(cli.NewHandler(debug)))
 
 	if err := cli.Run(os.Args[1:]); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, err.Error())
+		if debug {
+			slog.Error(err.Error())
+		} else {
+			fmt.Fprintln(os.Stderr, err.Error())
+		}
 		os.Exit(1)
 	}
 }
