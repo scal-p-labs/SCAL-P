@@ -2,6 +2,7 @@ package hash_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -134,6 +135,23 @@ func TestDir(t *testing.T) {
 			t.Fatal("expected error, got nil")
 		}
 	})
+}
+
+func BenchmarkDir(b *testing.B) {
+	dir := b.TempDir()
+	for i := 0; i < 100; i++ {
+		content := []byte(fmt.Sprintf("package content %d", i))
+		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("file-%d.js", i)), content, 0o644); err != nil {
+			b.Fatal(err)
+		}
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := hash.Dir(context.Background(), dir); err != nil {
+			b.Fatalf("unexpected error: %v", err)
+		}
+	}
 }
 
 func isValidHash(t *testing.T, h string) bool {

@@ -14,8 +14,10 @@ import (
 	"scal-p/internal/ctxutil"
 )
 
-// buffer pool for file hashing — reduces allocations vs allocating
-// a new 32 KB buffer per file.
+// Pool of reusable 32 KB buffers for streaming file content into SHA-512.
+// Each Dir() call borrows one buffer and returns it via defer, so the
+// same buffer is reused across all files in a single hash run without
+// allocating per-file buffers.
 var copyBufPool = sync.Pool{
 	New: func() any {
 		b := make([]byte, 32*1024)
@@ -36,26 +38,22 @@ func IsDir(name string) bool {
 
 // Dir hashes a package directory using SHA-512.
 //
-// Security decisions:
-//   - os.Lstat is used FIRST to check for symlinks. If the path itself
-//     is a symlink (e.g., node_modules/pkg -> /etc), we reject it
-//     immediately. This prevents traversing outside the project tree.
-//   - After the Lstat check, we open the directory with os.Open and use
-//     the SAME file descriptor for both Stat and Readdir. This eliminates
-//     the TOCTOU race between checking IsDir and reading entries.
-//   - Internal symlinks WITHIN the package directory are skipped
-//     (entry.Mode().IsRegular() rejects them). This prevents a malicious
-//     package from replacing a file with a symlink to /etc/passwd.
-//   - We do NOT follow pnpm's .pnpm store symlinks here — the
-//     resolvePkgDir function in lockfile/sync.go resolves the real path
-//     before calling Dir().
+// Security:
+//   - os.Lstat checks for top-level symlinks (node_modules/pkg -> /etc
+//     would be rejected early). Follow-up os.Open + f.Stat on the same fd
+//     eliminates the TOCTOU race between check and read.
+//   - Internal symlinks WITHIN the package are skipped via IsRegular().
+//     A malicious package replacing index.js with a symlink to /etc/passwd
+//     would be invisible to the hash.
+//   - The caller (resolvePkgDir in lockfile/sync.go) resolves the real
+//     disk path before passing it here, so pnpm's .pnpm store symlinks
+//     are already followed.
 func Dir(ctx context.Context, pkgPath string) (string, error) {
 	if err := ctxutil.Check(ctx); err != nil {
 		return "", err
 	}
 
-	// Reject top-level symlinks. The Lstat check catches node_modules/pkg
-	// if it's a symlink to an arbitrary directory.
+	// Reject top-level symlinks before opening anything.
 	fi, err := os.Lstat(pkgPath)
 	if err != nil {
 		return "", fmt.Errorf("stat %s: %w", pkgPath, err)
@@ -64,31 +62,26 @@ func Dir(ctx context.Context, pkgPath string) (string, error) {
 		return "", fmt.Errorf("refusing to hash symlink: %s", pkgPath)
 	}
 
-	// Open the directory and use the SAME fd for both type check and
-	// reading entries. This closes the TOCTOU window: an attacker
-	// cannot swap the directory for a symlink between the IsDir check
-	// and the ReadDir call.
-	f, err := os.Open(pkgPath)
+	dir, err := os.Open(pkgPath)
 	if err != nil {
 		return "", fmt.Errorf("open %s: %w", pkgPath, err)
 	}
-	defer f.Close() //nolint:errcheck
+	defer dir.Close() //nolint:errcheck
 
-	fi2, err := f.Stat()
+	// Same fd for Stat and Readdir — closes the TOCTOU window.
+	fi, err = dir.Stat()
 	if err != nil {
-		return "", fmt.Errorf("stat %s: %w", pkgPath, err)
+		return "", fmt.Errorf("stat dir %s: %w", pkgPath, err)
 	}
-	if !fi2.IsDir() {
+	if !fi.IsDir() {
 		return "", fmt.Errorf("not a directory: %s", pkgPath)
 	}
 
-	entries, err := f.Readdir(-1)
+	entries, err := dir.Readdir(-1)
 	if err != nil {
 		return "", fmt.Errorf("read dir %s: %w", pkgPath, err)
 	}
 
-	// Sort by name so the hash is deterministic regardless of
-	// filesystem layout or OS readdir order.
 	slices.SortFunc(entries, func(a, b os.FileInfo) int {
 		if a.Name() < b.Name() {
 			return -1
@@ -100,8 +93,6 @@ func Dir(ctx context.Context, pkgPath string) (string, error) {
 	})
 
 	h := sha512.New()
-	// Grab a buffer from the pool to reuse across files instead
-	// of allocating a new 32 KB slice for every single file.
 	buf := copyBufPool.Get().(*[]byte)
 	defer copyBufPool.Put(buf)
 
@@ -109,9 +100,9 @@ func Dir(ctx context.Context, pkgPath string) (string, error) {
 		if err := ctxutil.Check(ctx); err != nil {
 			return "", err
 		}
-		// Only hash regular files. Skip symlinks, devices, etc.
-		// Symlinks inside a package could point to sensitive files
-		// — rejecting them here prevents that attack.
+
+		// Only hash regular files. Symlinks, devices, sockets, etc.
+		// inside a package are skipped — they're metadata, not content.
 		if !entry.Mode().IsRegular() {
 			continue
 		}
@@ -124,12 +115,11 @@ func Dir(ctx context.Context, pkgPath string) (string, error) {
 			return "", fmt.Errorf("hash name %s: %w", fullPath, err)
 		}
 
-		// Stream file content through SHA-512 using a pooled buffer.
-		// The pool avoids allocating a fresh 32 KB slice per file.
 		f, err := os.Open(fullPath)
 		if err != nil {
 			return "", fmt.Errorf("open %s: %w", fullPath, err)
 		}
+
 		if _, err := io.CopyBuffer(h, f, *buf); err != nil {
 			f.Close() //nolint:errcheck
 			return "", fmt.Errorf("hash %s: %w", fullPath, err)

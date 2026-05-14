@@ -134,7 +134,7 @@ func (c *TrustCache) Save() error {
 	if err != nil {
 		return fmt.Errorf("marshal trust cache: %w", err)
 	}
-	if err := ioutil.WriteFileAtomic(c.path, data, 0o644); err != nil {
+	if err := ioutil.WriteFileAtomic(c.path, data); err != nil {
 		return fmt.Errorf("save cache: %w", err)
 	}
 	c.dirty = false
