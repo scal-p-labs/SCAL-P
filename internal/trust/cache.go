@@ -3,6 +3,7 @@ package trust
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -13,6 +14,7 @@ const (
 	DefaultCacheDir  = ".scalp/cache"
 	DefaultCacheFile = ".scalp/cache/trust.json"
 	DefaultTTL       = 7 * 24 * time.Hour
+	maxCacheBytes    = 50 * 1024 * 1024 // 50 MB limit
 )
 
 type VersionCache struct {
@@ -39,26 +41,21 @@ func LoadCache(path string) (*TrustCache, error) {
 		path:    path,
 		entries: map[string]CacheEntry{},
 	}
-	data, err := os.ReadFile(path)
+
+	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return c, nil
 		}
-		return nil, fmt.Errorf("read trust cache: %w", err)
+		return nil, fmt.Errorf("open trust cache: %w", err)
 	}
-	if err := json.Unmarshal(data, &c.entries); err != nil {
+	defer f.Close() //nolint:errcheck
+
+	dec := json.NewDecoder(io.LimitReader(f, maxCacheBytes))
+	if err := dec.Decode(&c.entries); err != nil {
 		return nil, fmt.Errorf("invalid trust cache JSON: %w", err)
 	}
-	for name := range c.entries {
-		if c.entries[name].Versions == nil {
-			c.entries[name] = CacheEntry{
-				FetchedAt:       c.entries[name].FetchedAt,
-				WeeklyDownloads: c.entries[name].WeeklyDownloads,
-				CVEs:            c.entries[name].CVEs,
-				Versions:        map[string]VersionCache{},
-			}
-		}
-	}
+
 	return c, nil
 }
 
@@ -136,12 +133,18 @@ func (c *TrustCache) Save() error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create cache dir: %w", err)
 	}
-	data, err := json.MarshalIndent(c.entries, "", "  ")
+	data, err := json.Marshal(c.entries)
 	if err != nil {
 		return fmt.Errorf("marshal trust cache: %w", err)
 	}
-	if err := os.WriteFile(c.path, data, 0o644); err != nil {
-		return fmt.Errorf("write trust cache: %w", err)
+
+	tmpPath := c.path + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0o644); err != nil {
+		return fmt.Errorf("write cache: %w", err)
+	}
+	if err := os.Rename(tmpPath, c.path); err != nil {
+		os.Remove(tmpPath) //nolint:errcheck
+		return fmt.Errorf("rename cache: %w", err)
 	}
 	c.dirty = false
 	return nil
