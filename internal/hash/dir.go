@@ -42,7 +42,7 @@ func Dir(ctx context.Context, pkgPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("open %s: %w", pkgPath, err)
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck
 
 	fi2, err := f.Stat()
 	if err != nil {
