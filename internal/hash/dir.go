@@ -15,9 +15,8 @@ import (
 )
 
 // Pool of reusable 32 KB buffers for streaming file content into SHA-512.
-// Each Dir() call borrows one buffer and returns it via defer, so the
-// same buffer is reused across all files in a single hash run without
-// allocating per-file buffers.
+// Each Dir() call borrows one buffer via Get + defer Put, so the same
+// buffer is reused across all files without allocating per-file slices.
 var copyBufPool = sync.Pool{
 	New: func() any {
 		b := make([]byte, 32*1024)
@@ -25,8 +24,8 @@ var copyBufPool = sync.Pool{
 	},
 }
 
-// IsDir reports whether the path is a directory. Follows symlinks
-// intentionally — we want to resolve pnpm's .pnpm store symlinks.
+// IsDir reports whether the path is an existing directory.
+// Follows symlinks intentionally — pnpm's .pnpm store uses them.
 // The security boundary is in Dir(), not here.
 func IsDir(name string) bool {
 	info, err := os.Stat(name)
@@ -36,24 +35,37 @@ func IsDir(name string) bool {
 	return info.IsDir()
 }
 
+// hashFile streams the file at path through the writer h and closes it.
+// Using defer ensures the file is closed even if io.CopyBuffer panics
+// or if future code paths are added before the Close.
+func hashFile(h io.Writer, path string, buf []byte) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close() //nolint:errcheck
+	_, err = io.CopyBuffer(h, f, buf)
+	return err
+}
+
 // Dir hashes a package directory using SHA-512.
 //
 // Security:
 //   - os.Lstat checks for top-level symlinks (node_modules/pkg -> /etc
 //     would be rejected early). Follow-up os.Open + f.Stat on the same fd
-//     eliminates the TOCTOU race between check and read.
+//     eliminates the TOCTOU race between type check and read.
 //   - Internal symlinks WITHIN the package are skipped via IsRegular().
 //     A malicious package replacing index.js with a symlink to /etc/passwd
 //     would be invisible to the hash.
-//   - The caller (resolvePkgDir in lockfile/sync.go) resolves the real
-//     disk path before passing it here, so pnpm's .pnpm store symlinks
-//     are already followed.
+//   - Individual files are opened and hashed one at a time. Each file is
+//     closed via defer in hashFile before the next iteration starts.
+//   - The caller (resolvePkgDir in lockfile/sync.go) resolves real disk
+//     paths before calling Dir, so pnpm .pnpm store symlinks are followed.
 func Dir(ctx context.Context, pkgPath string) (string, error) {
 	if err := ctxutil.Check(ctx); err != nil {
 		return "", err
 	}
 
-	// Reject top-level symlinks before opening anything.
 	fi, err := os.Lstat(pkgPath)
 	if err != nil {
 		return "", fmt.Errorf("stat %s: %w", pkgPath, err)
@@ -68,7 +80,6 @@ func Dir(ctx context.Context, pkgPath string) (string, error) {
 	}
 	defer dir.Close() //nolint:errcheck
 
-	// Same fd for Stat and Readdir — closes the TOCTOU window.
 	fi, err = dir.Stat()
 	if err != nil {
 		return "", fmt.Errorf("stat dir %s: %w", pkgPath, err)
@@ -101,11 +112,10 @@ func Dir(ctx context.Context, pkgPath string) (string, error) {
 			return "", err
 		}
 
-		// Only hash regular files. Symlinks, devices, sockets, etc.
-		// inside a package are skipped — they're metadata, not content.
 		if !entry.Mode().IsRegular() {
 			continue
 		}
+
 		fullPath := filepath.Join(pkgPath, entry.Name())
 		if entry.Size() == 0 {
 			continue
@@ -114,17 +124,9 @@ func Dir(ctx context.Context, pkgPath string) (string, error) {
 		if _, err := io.WriteString(h, entry.Name()+"\n"); err != nil {
 			return "", fmt.Errorf("hash name %s: %w", fullPath, err)
 		}
-
-		f, err := os.Open(fullPath)
-		if err != nil {
-			return "", fmt.Errorf("open %s: %w", fullPath, err)
-		}
-
-		if _, err := io.CopyBuffer(h, f, *buf); err != nil {
-			f.Close() //nolint:errcheck
+		if err := hashFile(h, fullPath, *buf); err != nil {
 			return "", fmt.Errorf("hash %s: %w", fullPath, err)
 		}
-		f.Close() //nolint:errcheck
 	}
 
 	sum := h.Sum(nil)
