@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -16,7 +17,11 @@ func ApplyEnforcement(mode string, violations []Violation) error {
 	message := formatViolations(violations)
 	switch mode {
 	case EnforceBlock:
-		return errors.New(message)
+		data, err := json.Marshal(violations)
+		if err != nil {
+			return errors.New(message)
+		}
+		return fmt.Errorf("ci failed: %s", string(data))
 	case EnforceWarn:
 		slog.Warn("policy violations detected", "details", message)
 		return nil

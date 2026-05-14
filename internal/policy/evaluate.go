@@ -9,9 +9,9 @@ import (
 
 // Violation represents a policy violation.
 type Violation struct {
-    PackageID string
-    Reason    string
-    Rule      string
+    PackageID string `json:"package"`
+    Reason    string `json:"reason"`
+    Rule      string `json:"rule"`
 }
 
 // Evaluate validates a node list against the policy.
