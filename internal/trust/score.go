@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"scal-p/internal/ctxutil"
@@ -79,6 +80,7 @@ func (s *Scorer) Evaluate(ctx context.Context, pol policy.Policy, nodes []pkgman
 	}
 
 	auditCVEs := s.fetchAuditCVEs(ctx)
+	s.prefetchDownloads(ctx, nodes, cache)
 
 	var violations []policy.Violation
 	for _, node := range nodes {
@@ -175,6 +177,32 @@ func parseVersion(v string) (major, minor, patch int) {
 		patch, _ = strconv.Atoi(patchStr)
 	}
 	return
+}
+
+func (s *Scorer) prefetchDownloads(ctx context.Context, nodes []pkgmanager.PackageNode, cache *TrustCache) {
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 10)
+
+	for _, node := range nodes {
+		entry, ok := cache.Get(node.Name)
+		if ok && !IsExpired(entry, DefaultTTL) {
+			continue
+		}
+
+		wg.Add(1)
+		go func(name string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			downloads, err := s.fetchWeeklyDownloads(ctx, name)
+			if err != nil {
+				return
+			}
+			cache.SetDownloads(name, downloads)
+		}(node.Name)
+	}
+	wg.Wait()
 }
 
 func (s *Scorer) scoreDownloadsCached(ctx context.Context, pkgName string, cache *TrustCache) int {
