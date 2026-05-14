@@ -18,8 +18,15 @@ func SyncWithTree(ctx context.Context, lf *Lockfile, tree pkgmanager.DependencyT
 	nodes := pkgmanager.Flatten(tree)
 	events := make([]audit.Event, 0, len(nodes))
 	now := time.Now().UTC().Format(time.RFC3339)
+	seen := map[string]bool{}
 
 	for _, node := range nodes {
+		key := fmt.Sprintf("%s@%s", node.Name, node.Version)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+
 		if err := ctxutil.Check(ctx); err != nil {
 			return nil, err
 		}
@@ -28,7 +35,7 @@ func SyncWithTree(ctx context.Context, lf *Lockfile, tree pkgmanager.DependencyT
 			events = append(events, audit.Event{
 				Timestamp: now,
 				Event:     "hash_skipped",
-				Package:   fmt.Sprintf("%s@%s", node.Name, node.Version),
+				Package:   key,
 				Status:    "warn",
 				Reason:    "package_dir_not_found",
 			})
@@ -40,7 +47,6 @@ func SyncWithTree(ctx context.Context, lf *Lockfile, tree pkgmanager.DependencyT
 			return nil, fmt.Errorf("hash %s: %w", pkgDir, err)
 		}
 
-		key := fmt.Sprintf("%s@%s", node.Name, node.Version)
 		lf.Packages[key] = LockEntry{
 			Resolved:   node.Resolved,
 			Integrity:  integrity,
@@ -64,12 +70,17 @@ func VerifyAgainstTree(ctx context.Context, lf *Lockfile, tree pkgmanager.Depend
 	events := make([]audit.Event, 0, len(nodes))
 	var violations []policy.Violation
 	now := time.Now().UTC().Format(time.RFC3339)
+	seen := map[string]bool{}
 
 	for _, node := range nodes {
+		key := fmt.Sprintf("%s@%s", node.Name, node.Version)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
 		if err := ctxutil.Check(ctx); err != nil {
 			return nil, nil, err
 		}
-		key := fmt.Sprintf("%s@%s", node.Name, node.Version)
 		pkgDir := resolvePkgDir(node, pm)
 
 		entry, ok := lf.Packages[key]
