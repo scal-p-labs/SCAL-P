@@ -72,8 +72,17 @@ func VerifyAgainstTree(ctx context.Context, lf *Lockfile, tree pkgmanager.Depend
 			return nil, nil, err
 		}
 		key := fmt.Sprintf("%s@%s", node.Name, node.Version)
+
+		pkgDir := node.Path
+		if pkgDir == "" {
+			pkgDir = pm.LocalPath(node.Name)
+		}
+
 		entry, ok := lf.Packages[key]
 		if !ok {
+			if !hash.IsDir(pkgDir) {
+				continue
+			}
 			violations = append(violations, policy.Violation{
 				PackageID: key,
 				Reason:    "missing_lock_entry",
@@ -89,10 +98,6 @@ func VerifyAgainstTree(ctx context.Context, lf *Lockfile, tree pkgmanager.Depend
 			continue
 		}
 
-		pkgDir := node.Path
-		if pkgDir == "" {
-			pkgDir = pm.LocalPath(node.Name)
-		}
 		if !hash.IsDir(pkgDir) {
 			violations = append(violations, policy.Violation{
 				PackageID: key,

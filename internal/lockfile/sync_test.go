@@ -420,6 +420,52 @@ func TestAdversarial_tamperedIntegrityEmpty(t *testing.T) {
 	}
 }
 
+func TestAdversarial_optionalPlatformDep(t *testing.T) {
+	dir := t.TempDir()
+	old := chdir(t, dir)
+	defer restoreWd(t, old)
+
+	tree := pkgmanager.DependencyTree{
+		Name:    "test",
+		Version: "1.0",
+		Dependencies: map[string]pkgmanager.DependencyRef{
+			"pkg": {Version: "1.0"},
+			"lightningcss-android-arm64": {Version: "1.0.0"},
+			"@esbuild/linux-ia32":       {Version: "1.0.0"},
+		},
+	}
+
+	pkgDir := filepath.Join("node_modules", "pkg")
+	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkgDir, "index.js"), []byte("real"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	lf := newLockfile("")
+	if _, err := lockfile.SyncWithTree(context.Background(), &lf, tree, npmPM()); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if len(lf.Packages) != 1 {
+		t.Fatalf("expected 1 lockfile entry (only pkg has a dir), got %d", len(lf.Packages))
+	}
+	if _, ok := lf.Packages["pkg@1.0"]; !ok {
+		t.Fatal("expected pkg@1.0 in lockfile")
+	}
+
+	violations, events, err := lockfile.VerifyAgainstTree(context.Background(), &lf, tree, npmPM())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(violations) != 0 {
+		t.Errorf("expected 0 violations (optional deps not installed should be skipped), got %d: %+v", len(violations), violations)
+	}
+	if len(events) != 1 || events[0].Package != "pkg@1.0" {
+		t.Errorf("expected 1 event for pkg@1.0 only, got %d events: %+v", len(events), events)
+	}
+}
+
 func TestAdversarial_lockfileHashWrong(t *testing.T) {
 	dir := t.TempDir()
 	old := chdir(t, dir)
