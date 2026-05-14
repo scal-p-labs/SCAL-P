@@ -17,6 +17,8 @@ import (
 	"scal-p/internal/version"
 )
 
+var runCtx context.Context
+
 func init() {
 	npm.Register()
 	pnpm.Register()
@@ -27,6 +29,7 @@ func Run(args []string) error {
 }
 
 func RunContext(ctx context.Context, args []string) error {
+	runCtx = ctx
 	args = filterGlobalFlags(args)
 
 	if len(args) == 0 {

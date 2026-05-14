@@ -20,10 +20,11 @@ import (
 )
 
 const (
-	ptsHashVerified = 30
-	ptsMaturity     = 15
-	ptsMaxDownloads = 20
-	ptsNoCVEs       = 15
+	ptsHashVerified  = 30
+	ptsMaturity      = 15
+	ptsMaxDownloads  = 20
+	ptsNoCVEs        = 15
+	defaultWorkers   = 10
 )
 
 type ScoreBreakdown struct {
@@ -44,6 +45,7 @@ type Scorer struct {
 	client    *http.Client
 	apiURL    string
 	auditFunc func(ctx context.Context) map[string][]string
+	workers   int
 }
 
 func NewScorer(cachePath string) *Scorer {
@@ -51,7 +53,17 @@ func NewScorer(cachePath string) *Scorer {
 		cachePath: cachePath,
 		client:    &http.Client{Timeout: 10 * time.Second},
 		apiURL:    "https://api.npmjs.org",
+		workers:   defaultWorkers,
 	}
+}
+
+// SetWorkers sets the number of concurrent HTTP workers for
+// download prefetching. Default is 10. Values <= 0 reset to default.
+func (s *Scorer) SetWorkers(n int) {
+	if n <= 0 {
+		n = defaultWorkers
+	}
+	s.workers = n
 }
 
 func (s *Scorer) SetHTTPClient(c *http.Client) {
@@ -181,7 +193,7 @@ func parseVersion(v string) (major, minor, patch int) {
 
 func (s *Scorer) prefetchDownloads(ctx context.Context, nodes []pkgmanager.PackageNode, cache *TrustCache) {
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 10)
+	sem := make(chan struct{}, s.workers)
 
 	for _, node := range nodes {
 		entry, ok := cache.Get(node.Name)

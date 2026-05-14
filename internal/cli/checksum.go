@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,7 +21,7 @@ func runChecksum(args []string) error {
 		return fmt.Errorf("at least one file required")
 	}
 
-	ctx := context.Background()
+	ctx := runCtx
 	var lines string
 
 	for _, f := range files {

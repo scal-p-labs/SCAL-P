@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"scal-p/internal/ctxutil"
+	"scal-p/internal/ioutil"
 )
 
 // Lockfile contains hashes for installed packages.
@@ -56,21 +56,9 @@ func Save(ctx context.Context, path string, lf Lockfile) error {
 		return err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("create lockfile dir: %w", err)
-	}
 	data, err := json.MarshalIndent(lf, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode lockfile: %w", err)
 	}
-
-	tmpPath := path + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0o644); err != nil {
-		return fmt.Errorf("write lockfile: %w", err)
-	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		os.Remove(tmpPath) //nolint:errcheck
-		return fmt.Errorf("rename lockfile: %w", err)
-	}
-	return nil
+	return ioutil.WriteFileAtomic(path, data, 0o644)
 }

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -39,7 +38,7 @@ func runInstall(args []string) error {
 		return err
 	}
 
-	ctx := context.Background()
+	ctx := runCtx
 	pol, polInfo, err := policy.Load(ctx, cfg.policyPath)
 	if err != nil {
 		return err

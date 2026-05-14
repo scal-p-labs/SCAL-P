@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
+
+	"scal-p/internal/ioutil"
 )
 
 const (
@@ -129,22 +130,12 @@ func (c *TrustCache) Save() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	dir := filepath.Dir(c.path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("create cache dir: %w", err)
-	}
 	data, err := json.Marshal(c.entries)
 	if err != nil {
 		return fmt.Errorf("marshal trust cache: %w", err)
 	}
-
-	tmpPath := c.path + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0o644); err != nil {
-		return fmt.Errorf("write cache: %w", err)
-	}
-	if err := os.Rename(tmpPath, c.path); err != nil {
-		os.Remove(tmpPath) //nolint:errcheck
-		return fmt.Errorf("rename cache: %w", err)
+	if err := ioutil.WriteFileAtomic(c.path, data, 0o644); err != nil {
+		return fmt.Errorf("save cache: %w", err)
 	}
 	c.dirty = false
 	return nil

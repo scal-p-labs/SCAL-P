@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -32,7 +31,7 @@ func runVerify(args []string) error {
 		return fmt.Errorf("--checksum is required")
 	}
 
-	ctx := context.Background()
+	ctx := runCtx
 	pol, polInfo, err := policy.Load(ctx, *policyPath)
 	if err != nil {
 		return err

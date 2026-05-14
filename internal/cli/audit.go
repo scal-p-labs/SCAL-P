@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"log/slog"
 	"strings"
 
@@ -30,7 +29,7 @@ func runAudit(args []string) error {
 		return err
 	}
 
-	ctx := context.Background()
+	ctx := runCtx
 	pol, polInfo, err := policy.Load(ctx, cfg.policyPath)
 	if err != nil {
 		return err
