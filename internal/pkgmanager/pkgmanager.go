@@ -50,23 +50,25 @@ type PackageManager interface {
 }
 
 // Flatten converts a dependency tree into a flat list of PackageNode.
+// The same name@version may appear multiple times (hoisted duplicates).
+// SyncWithTree handles this by overwriting lockfile entries.
 func Flatten(tree DependencyTree) []PackageNode {
 	if len(tree.Dependencies) == 0 {
 		return nil
 	}
 	var nodes []PackageNode
-	visited := map[string]bool{}
-	visitDeps(tree.Dependencies, 0, &nodes, visited)
+	visitDeps(tree.Dependencies, 0, &nodes, 0)
 	return nodes
 }
 
-func visitDeps(deps map[string]DependencyRef, depth int, nodes *[]PackageNode, visited map[string]bool) {
+const maxFlattenDepth = 10000
+
+func visitDeps(deps map[string]DependencyRef, depth int, nodes *[]PackageNode, guard int) {
+	if guard > maxFlattenDepth {
+		return
+	}
 	for name, ref := range deps {
-		key := name + "@" + ref.Version
-		if visited[key] {
-			continue
-		}
-		visited[key] = true
+		guard++
 		*nodes = append(*nodes, PackageNode{
 			Name:      name,
 			Version:   ref.Version,
@@ -76,7 +78,7 @@ func visitDeps(deps map[string]DependencyRef, depth int, nodes *[]PackageNode, v
 			Depth:     depth,
 		})
 		if ref.Dependencies != nil {
-			visitDeps(ref.Dependencies, depth+1, nodes, visited)
+			visitDeps(ref.Dependencies, depth+1, nodes, guard)
 		}
 	}
 }
