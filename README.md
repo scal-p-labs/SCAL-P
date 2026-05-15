@@ -117,7 +117,21 @@ Offline-first: network failure = half points, not zero. `require_hash`: missing 
 
 ## Package managers
 
-npm and pnpm supported. Selected via `--pm` flag (default npm).
+npm (default) and pnpm supported. Select with `--pm`:
+
+```bash
+scalp install --pm npm              # npm (default)
+scalp install --pm pnpm             # pnpm
+scalp ci --pm pnpm                  # CI with pnpm
+scalp audit --pm pnpm               # audit pnpm lockfile
+```
+
+The PM flag must come before the subcommand's own arguments:
+
+```bash
+scalp install --pm pnpm --guarded   # guarded install with pnpm
+scalp install --pm npm --guarded    # same with npm (explicit)
+```
 
 ---
 
