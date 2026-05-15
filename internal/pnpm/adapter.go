@@ -85,6 +85,32 @@ func (a *Adapter) GetTree(ctx context.Context) (pkgmanager.DependencyTree, error
 		return pkgmanager.DependencyTree{}, err
 	}
 
+	// Fast path: parse pnpm-lock.yaml directly. This avoids the extremely
+	// slow pnpm ls --depth Infinity (which can take minutes on large projects).
+	nodes, err := ParsePnpmLockfile(ctx)
+	if err != nil {
+		// Fall back to pnpm ls --json --depth Infinity if lockfile parsing
+		// fails (e.g., file not found, unsupported format).
+		return a.getTreeViaLs(ctx)
+	}
+
+	deps := make(map[string]pkgmanager.DependencyRef, len(nodes))
+	for _, node := range nodes {
+		deps[node.Name] = pkgmanager.DependencyRef{
+			Version:   node.Version,
+			Resolved:  node.Resolved,
+			Integrity: node.Integrity,
+			Path:      "node_modules/" + node.Name,
+		}
+	}
+	return pkgmanager.DependencyTree{
+		Name:         "pnpm-project",
+		Version:      "0.0",
+		Dependencies: deps,
+	}, nil
+}
+
+func (a *Adapter) getTreeViaLs(ctx context.Context) (pkgmanager.DependencyTree, error) {
 	cmd := execCommand(ctx, "pnpm", "ls", "--json", "--depth", "Infinity")
 	cmd.Stderr = os.Stderr
 	stdout, err := cmd.StdoutPipe()
@@ -112,12 +138,11 @@ func (a *Adapter) GetTree(ctx context.Context) (pkgmanager.DependencyTree, error
 	}
 
 	root := entries[0]
-	tree := pkgmanager.DependencyTree{
+	return pkgmanager.DependencyTree{
 		Name:         root.Name,
 		Version:      root.Version,
 		Dependencies: convertPnpmDeps(root.Dependencies),
-	}
-	return tree, nil
+	}, nil
 }
 
 func convertPnpmDeps(deps map[string]pnpmDependencyRef) map[string]pkgmanager.DependencyRef {
