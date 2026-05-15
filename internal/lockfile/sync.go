@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"time"
 
 	"scal-p/internal/audit"
@@ -145,22 +146,30 @@ func VerifyAgainstTree(ctx context.Context, lf *Lockfile, tree pkgmanager.Depend
 	return violations, events, nil
 }
 
-// resolvePkgDir tries the path reported by npm ls first, then falls back
-// to node_modules/<name>. Some npm versions report nested paths for hoisted
-// packages that don't actually exist on disk.
+// resolvePkgDir tries the path reported by the package manager first,
+// then falls back to node_modules/<name>. For pnpm, the reported path is
+// a symlink (node_modules/pkg -> .pnpm/pkg@v/node_modules/pkg), so we
+// resolve it to the real path before returning — hash.Dir rejects symlinks.
 func resolvePkgDir(node pkgmanager.PackageNode, pm pkgmanager.PackageManager) string {
-	if node.Path != "" && hash.IsDir(node.Path) {
-		return node.Path
-	}
-	fallback := pm.LocalPath(node.Name)
-	if hash.IsDir(fallback) {
-		if node.Path != "" && node.Path != fallback {
-			slog.Debug("package resolved via fallback",
-				"pkg", node.Name, "reported", node.Path, "found", fallback)
+	path := node.Path
+	if path == "" || !hash.IsDir(path) {
+		path = pm.LocalPath(node.Name)
+		if !hash.IsDir(path) {
+			return ""
 		}
-		return fallback
+		if node.Path != "" && node.Path != path {
+			slog.Debug("package resolved via fallback",
+				"pkg", node.Name, "reported", node.Path, "found", path)
+		}
 	}
-	return ""
+	// Resolve pnpm symlinks so hash.Dir (which rejects symlinks via os.Lstat)
+	// receives the real directory path instead of a symlink.
+	realPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		slog.Debug("resolve symlink", "path", path, "err", err)
+		return path
+	}
+	return realPath
 }
 
 func statusFromMatch(match bool) string {
