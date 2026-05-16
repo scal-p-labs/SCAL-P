@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -13,7 +14,7 @@ import (
 	"scal-p/internal/policy"
 )
 
-func runVerify(args []string) error {
+func runVerify(ctx context.Context, args []string) error {
 	fs := newFlagSet("verify")
 	artifact := fs.String("artifact", "", "path to release artifact")
 	checksumsFile := fs.String("checksum", "", "path to checksums file")
@@ -31,7 +32,6 @@ func runVerify(args []string) error {
 		return fmt.Errorf("--checksum is required")
 	}
 
-	ctx := runCtx
 	pol, polInfo, err := policy.Load(ctx, *policyPath)
 	if err != nil {
 		return err
