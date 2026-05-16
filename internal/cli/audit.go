@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"log/slog"
 	"strings"
 
@@ -11,7 +12,7 @@ import (
 	"scal-p/internal/trust"
 )
 
-func runAudit(args []string) error {
+func runAudit(ctx context.Context, args []string) error {
 	fs := newFlagSet("audit")
 	cfg := &cliConfig{}
 	fs.StringVar(&cfg.pm, "pm", "npm", "package manager: npm|pnpm")
@@ -29,7 +30,6 @@ func runAudit(args []string) error {
 		return err
 	}
 
-	ctx := runCtx
 	pol, polInfo, err := policy.Load(ctx, cfg.policyPath)
 	if err != nil {
 		return err
