@@ -197,6 +197,19 @@ func ParsePnpmLockfile(ctx context.Context) ([]pkgmanager.PackageNode, error) {
 	return parseLockfileYAML(data)
 }
 
+// Maximum line length for pnpm-lock.yaml parsing (safety limit).
+const maxPnpmLineLen = 10 * 1024
+
+// Maximum number of package entries (safety limit).
+const maxPnpmEntries = 100000
+
+// Known indent levels in pnpm-lock.yaml packages section.
+const (
+	indentPkgKey      = 2 // /lodash/4.17.21:
+	indentPkgProperty = 4 // resolution:, engines:, dev:
+	indentPkgSubProp  = 6 // integrity: sha512-... (under resolution:)
+)
+
 // lockfilePkgEntry holds parsed data for a single package in pnpm-lock.yaml.
 type lockfilePkgEntry struct {
 	name      string
@@ -205,53 +218,105 @@ type lockfilePkgEntry struct {
 	resolved  string
 }
 
+// parserState tracks position within the lockfile during parsing.
+type parserState struct {
+	current           *lockfilePkgEntry
+	inPackages        bool
+	resolutionPending bool
+	resolvedPending   bool
+	lineNum           int
+}
+
+// parseLockfileYAML parses the packages section of a pnpm-lock.yaml file.
+//
+// Supported lockfile version range: v5.4 through v9+.
+// This is NOT a full YAML parser. It only reads the "packages:" section
+// and extracts name, version, integrity, and resolved URL for each entry.
+//
+// Known limitations:
+//   - Peer dependencies are not parsed
+//   - Optional dependencies are not distinguished
+//   - Bundled dependencies are not parsed
+//   - patchedDependencies and overrides are not supported
+//   - Only /name/version and /name@version key formats
+//   - dependencies/devDependencies inside package entries are not recursively parsed
+//
+// Security: The lockfile is treated as hostile input. The parser validates
+// structure at every step and aborts with an error on unexpected input.
+// Input size is bounded (max line length, max entry count).
 func parseLockfileYAML(data []byte) ([]pkgmanager.PackageNode, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+
 	scanner := bufio.NewScanner(bytes.NewReader(data))
+	scanner.Buffer(make([]byte, 0, maxPnpmLineLen), maxPnpmLineLen)
 
 	var entries []lockfilePkgEntry
-	var current *lockfilePkgEntry
-	inPackages := false
+	state := &parserState{}
 
 	for scanner.Scan() {
+		state.lineNum++
+
 		line := scanner.Text()
 		trimmed := strings.TrimSpace(line)
 
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-
-		if !inPackages {
-			if trimmed == "packages:" {
-				inPackages = true
-			}
+			state.resolutionPending = false
+			state.resolvedPending = false
 			continue
 		}
 
 		indent := countIndent(line)
 
-		if indent == 0 && trimmed != "" {
-			break
-		}
-
-		if indent == 2 && strings.HasSuffix(trimmed, ":") {
-			if current != nil {
-				entries = append(entries, *current)
+		if !state.inPackages {
+			if trimmed == "packages:" {
+				state.inPackages = true
 			}
-
-			key := strings.TrimSuffix(trimmed, ":")
-			current = parseLockfileKey(key)
 			continue
 		}
 
-		if current != nil && indent == 4 {
-			if strings.HasPrefix(trimmed, "resolution:") {
-				current.integrity = extractIntegrity(trimmed)
+		if indent == 0 {
+			break
+		}
+
+		if err := validateIndent(indent); err != nil {
+			return nil, err
+		}
+
+		switch {
+		case indent == indentPkgKey && strings.HasSuffix(trimmed, ":"):
+			state.flushEntry(&entries)
+
+			key := strings.TrimSuffix(trimmed, ":")
+			var err error
+			state.current, err = parseLockfileKey(key)
+			if err != nil {
+				return nil, err
+			}
+			state.resolutionPending = false
+			state.resolvedPending = false
+
+		case indent == indentPkgProperty:
+			if err := state.handleProperty(trimmed); err != nil {
+				return nil, err
+			}
+
+		case indent == indentPkgSubProp:
+			if err := state.handleSubProperty(trimmed); err != nil {
+				return nil, err
 			}
 		}
 	}
 
-	if current != nil {
-		entries = append(entries, *current)
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("scanning pnpm-lock.yaml: %w", err)
+	}
+
+	state.flushEntry(&entries)
+
+	if len(entries) > maxPnpmEntries {
+		return nil, fmt.Errorf("too many packages (%d exceeds max %d)", len(entries), maxPnpmEntries)
 	}
 
 	nodes := make([]pkgmanager.PackageNode, 0, len(entries))
@@ -269,6 +334,94 @@ func parseLockfileYAML(data []byte) ([]pkgmanager.PackageNode, error) {
 	return nodes, nil
 }
 
+// validateIndent returns an error if indent is not a known level.
+func validateIndent(indent int) error {
+	switch indent {
+	case indentPkgKey, indentPkgProperty, indentPkgSubProp:
+		return nil
+	default:
+		return fmt.Errorf("unexpected indent level %d (expected %d, %d, or %d)",
+			indent, indentPkgKey, indentPkgProperty, indentPkgSubProp)
+	}
+}
+
+// flushEntry appends the current entry to the entries slice and resets it.
+func (s *parserState) flushEntry(entries *[]lockfilePkgEntry) {
+	if s.current != nil {
+		*entries = append(*entries, *s.current)
+		s.current = nil
+	}
+}
+
+// handleProperty processes an indent-4 line inside a package entry.
+func (s *parserState) handleProperty(trimmed string) error {
+	if s.current == nil {
+		return fmt.Errorf("property %q outside a package entry", trimmed)
+	}
+
+	switch {
+	case strings.HasPrefix(trimmed, "resolution:"):
+		s.resolutionPending = false
+
+		inline := extractInlineIntegrity(trimmed)
+		if inline != "" {
+			s.current.integrity = inline
+		} else {
+			s.resolutionPending = true
+		}
+
+	case strings.HasPrefix(trimmed, "resolved:"):
+		s.resolvedPending = false
+
+		val := extractColonValue(trimmed)
+		if val != "" {
+			s.current.resolved = val
+		} else {
+			s.resolvedPending = true
+		}
+
+	default:
+		s.resolutionPending = false
+		s.resolvedPending = false
+	}
+
+	return nil
+}
+
+// handleSubProperty processes an indent-6 line inside a multi-line block.
+func (s *parserState) handleSubProperty(trimmed string) error {
+	if s.current == nil {
+		return fmt.Errorf("sub-property %q outside a package entry", trimmed)
+	}
+
+	switch {
+	case s.resolutionPending && strings.HasPrefix(trimmed, "integrity:"):
+		val := extractColonValue(trimmed)
+		if val == "" {
+			return fmt.Errorf("empty integrity value for package %s", s.current.name)
+		}
+		s.current.integrity = val
+		s.resolutionPending = false
+
+	case s.resolvedPending && strings.HasPrefix(trimmed, "integrity:"):
+		val := extractColonValue(trimmed)
+		if val == "" {
+			return fmt.Errorf("empty integrity value for package %s", s.current.name)
+		}
+		s.current.integrity = val
+		s.resolvedPending = false
+
+	default:
+		// Unknown sub-properties (e.g., "tarball:" inside resolution) are
+		// silently skipped rather than rejected — they are valid YAML but
+		// not relevant to SCAL-P's lockfile verification.
+	}
+
+	return nil
+}
+
+// countIndent counts leading whitespace characters in a line.
+// Each space adds 1, each tab adds 2 (matching the 2-space indent convention).
 func countIndent(line string) int {
 	n := 0
 	for _, c := range line {
@@ -284,29 +437,50 @@ func countIndent(line string) int {
 	return n
 }
 
-func parseLockfileKey(key string) *lockfilePkgEntry {
+// parseLockfileKey parses a package key from pnpm-lock.yaml into name and version.
+//
+// Key formats:
+//   - /lodash/4.17.21         → name=lodash, version=4.17.21
+//   - /@babel/code-frame/7.24.7 → name=@babel/code-frame, version=7.24.7
+//   - /lodash@4.17.21         → name=lodash, version=4.17.21
+//   - /@scope%2Fname/1.0.0    → name=@scope/name, version=1.0.0
+func parseLockfileKey(key string) (*lockfilePkgEntry, error) {
 	key = strings.TrimPrefix(key, "/")
+	if key == "" {
+		return nil, fmt.Errorf("empty package key")
+	}
 
 	splitAt := strings.LastIndex(key, "/")
 	if splitAt == -1 {
 		splitAt = strings.LastIndex(key, "@")
 	}
-	if splitAt == -1 {
-		return nil
+	if splitAt == -1 || splitAt == 0 || splitAt == len(key)-1 {
+		return nil, fmt.Errorf("malformed package key %q", key)
 	}
+
 	name := key[:splitAt]
 	version := key[splitAt+1:]
+
+	if name == "" || version == "" {
+		return nil, fmt.Errorf("empty name or version in package key %q", key)
+	}
 
 	name = strings.ReplaceAll(name, "%2f", "/")
 	name = strings.ReplaceAll(name, "%2F", "/")
 
+	if strings.Contains(version, "/") {
+		return nil, fmt.Errorf("version %q contains slash in package key %q", version, key)
+	}
+
 	return &lockfilePkgEntry{
 		name:    name,
 		version: version,
-	}
+	}, nil
 }
 
-func extractIntegrity(line string) string {
+// extractInlineIntegrity extracts integrity from an inline resolution block.
+// Handles both {integrity: sha512-...} and integrity: sha512-... on the same line.
+func extractInlineIntegrity(line string) string {
 	idx := strings.Index(line, "{integrity:")
 	if idx == -1 {
 		idx = strings.Index(line, "integrity: ")
@@ -335,10 +509,25 @@ func extractIntegrity(line string) string {
 	rest = strings.TrimSpace(rest)
 	rest = strings.Trim(rest, "\"'")
 
-	// Handle trailing , or whitespace
 	rest = strings.TrimRight(rest, ", \t")
 
 	return rest
+}
+
+// extractColonValue extracts the value after the first colon in a line.
+// Used for multi-line property values like "integrity: sha512-...".
+func extractColonValue(line string) string {
+	idx := strings.Index(line, ":")
+	if idx == -1 {
+		return ""
+	}
+
+	val := line[idx+1:]
+	val = strings.TrimSpace(val)
+	val = strings.Trim(val, "\"'")
+	val = strings.TrimRight(val, ", \t")
+
+	return val
 }
 
 // LocalPath returns the node_modules path for a package.

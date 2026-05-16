@@ -623,6 +623,344 @@ packages:
 }
 
 // ──────────────────────────────────────────────
+// Tab-indented lockfile parsing
+// ──────────────────────────────────────────────
+
+func TestParseLockfile_TabIndented(t *testing.T) {
+	t.Run("tab-indented packages", func(t *testing.T) {
+		dir := t.TempDir()
+		oldWd, _ := os.Getwd()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := os.Chdir(oldWd); err != nil {
+				t.Error(err)
+			}
+		}()
+
+		lockfile := "lockfileVersion: '9.0'\npackages:\n\t/lodash/4.17.21:\n\t\tresolution:\n\t\t\tintegrity: sha512-tabtest==\n\t\tdev: false\n"
+		if err := os.WriteFile("pnpm-lock.yaml", []byte(lockfile), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		a := &pnpm.Adapter{}
+		nodes, err := a.ParseLockfile(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(nodes) != 1 {
+			t.Fatalf("expected 1 node, got %d", len(nodes))
+		}
+		if nodes[0].Name != "lodash" {
+			t.Errorf("expected lodash, got %s", nodes[0].Name)
+		}
+		if nodes[0].Version != "4.17.21" {
+			t.Errorf("expected 4.17.21, got %s", nodes[0].Version)
+		}
+		if nodes[0].Integrity != "sha512-tabtest==" {
+			t.Errorf("expected sha512-tabtest==, got %s", nodes[0].Integrity)
+		}
+	})
+
+	t.Run("mixed tabs and spaces", func(t *testing.T) {
+		dir := t.TempDir()
+		oldWd, _ := os.Getwd()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := os.Chdir(oldWd); err != nil {
+				t.Error(err)
+			}
+		}()
+
+		lockfile := "lockfileVersion: '9.0'\npackages:\n  /lodash/4.17.21:\n\t\tresolution: {integrity: sha512-mixed==}\n"
+		if err := os.WriteFile("pnpm-lock.yaml", []byte(lockfile), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		a := &pnpm.Adapter{}
+		nodes, err := a.ParseLockfile(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(nodes) != 1 {
+			t.Fatalf("expected 1 node, got %d", len(nodes))
+		}
+		if nodes[0].Integrity != "sha512-mixed==" {
+			t.Errorf("expected sha512-mixed==, got %s", nodes[0].Integrity)
+		}
+	})
+}
+
+// ──────────────────────────────────────────────
+// Multi-line resolution block
+// ──────────────────────────────────────────────
+
+func TestParseLockfile_MultiLineResolution(t *testing.T) {
+	t.Run("multi-line resolution with integrity", func(t *testing.T) {
+		dir := t.TempDir()
+		oldWd, _ := os.Getwd()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := os.Chdir(oldWd); err != nil {
+				t.Error(err)
+			}
+		}()
+
+		lockfile := `lockfileVersion: '9.0'
+packages:
+  /lodash/4.17.21:
+    resolution:
+      integrity: sha512-multiline-test==
+    dev: false
+  /is-odd/3.0.1:
+    resolution:
+      integrity: sha512-odd-test==
+    dev: false
+`
+		if err := os.WriteFile("pnpm-lock.yaml", []byte(lockfile), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		a := &pnpm.Adapter{}
+		nodes, err := a.ParseLockfile(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(nodes) != 2 {
+			t.Fatalf("expected 2 nodes, got %d", len(nodes))
+		}
+		byName := map[string]pkgmanager.PackageNode{}
+		for _, n := range nodes {
+			byName[n.Name] = n
+		}
+
+		lodash, ok := byName["lodash"]
+		if !ok {
+			t.Fatal("missing lodash")
+		}
+		if lodash.Integrity != "sha512-multiline-test==" {
+			t.Errorf("lodash integrity: expected sha512-multiline-test==, got %s", lodash.Integrity)
+		}
+
+		odd, ok := byName["is-odd"]
+		if !ok {
+			t.Fatal("missing is-odd")
+		}
+		if odd.Integrity != "sha512-odd-test==" {
+			t.Errorf("is-odd integrity: expected sha512-odd-test==, got %s", odd.Integrity)
+		}
+	})
+
+	t.Run("multi-line resolution with resolved URL", func(t *testing.T) {
+		dir := t.TempDir()
+		oldWd, _ := os.Getwd()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := os.Chdir(oldWd); err != nil {
+				t.Error(err)
+			}
+		}()
+
+		lockfile := `lockfileVersion: '9.0'
+packages:
+  /lodash/4.17.21:
+    resolution:
+      integrity: sha512-url-test==
+      tarball: https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz
+    dev: false
+`
+		if err := os.WriteFile("pnpm-lock.yaml", []byte(lockfile), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		a := &pnpm.Adapter{}
+		nodes, err := a.ParseLockfile(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(nodes) != 1 {
+			t.Fatalf("expected 1 node, got %d", len(nodes))
+		}
+		if nodes[0].Integrity != "sha512-url-test==" {
+			t.Errorf("expected sha512-url-test==, got %s", nodes[0].Integrity)
+		}
+	})
+}
+
+// ──────────────────────────────────────────────
+// Malformed structure validation
+// ──────────────────────────────────────────────
+
+func TestParseLockfile_MalformedStructure(t *testing.T) {
+	t.Run("unknown indent level", func(t *testing.T) {
+		dir := t.TempDir()
+		oldWd, _ := os.Getwd()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := os.Chdir(oldWd); err != nil {
+				t.Error(err)
+			}
+		}()
+
+		lockfile := "lockfileVersion: '9.0'\npackages:\n   /wrong-indent/1.0.0:\n    resolution: {integrity: sha512-test==}\n"
+		if err := os.WriteFile("pnpm-lock.yaml", []byte(lockfile), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		a := &pnpm.Adapter{}
+		_, err := a.ParseLockfile(context.Background())
+		if err == nil {
+			t.Fatal("expected error for unknown indent level (3 spaces), got nil")
+		}
+	})
+
+	t.Run("orphan sub-property silently skipped", func(t *testing.T) {
+		dir := t.TempDir()
+		oldWd, _ := os.Getwd()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := os.Chdir(oldWd); err != nil {
+				t.Error(err)
+			}
+		}()
+
+		lockfile := "lockfileVersion: '9.0'\npackages:\n  /pkg/1.0.0:\n    dev: false\n      integrity: sha512-orphan==\n"
+		if err := os.WriteFile("pnpm-lock.yaml", []byte(lockfile), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		a := &pnpm.Adapter{}
+		nodes, err := a.ParseLockfile(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(nodes) != 1 {
+			t.Fatalf("expected 1 node, got %d", len(nodes))
+		}
+		// The orphan integrity sub-property should be silently skipped
+		// since it appeared outside a resolution block.
+		if nodes[0].Integrity != "" {
+			t.Errorf("expected empty integrity for orphan sub-property, got %s", nodes[0].Integrity)
+		}
+	})
+
+	t.Run("empty package key", func(t *testing.T) {
+		dir := t.TempDir()
+		oldWd, _ := os.Getwd()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := os.Chdir(oldWd); err != nil {
+				t.Error(err)
+			}
+		}()
+
+		lockfile := "lockfileVersion: '9.0'\npackages:\n  /:\n    resolution: {integrity: sha512-test==}\n"
+		if err := os.WriteFile("pnpm-lock.yaml", []byte(lockfile), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		a := &pnpm.Adapter{}
+		_, err := a.ParseLockfile(context.Background())
+		if err == nil {
+			t.Fatal("expected error for empty package key, got nil")
+		}
+	})
+
+	t.Run("double slash in key", func(t *testing.T) {
+		dir := t.TempDir()
+		oldWd, _ := os.Getwd()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := os.Chdir(oldWd); err != nil {
+				t.Error(err)
+			}
+		}()
+
+		lockfile := "lockfileVersion: '9.0'\npackages:\n  //b:\n    resolution: {integrity: sha512-test==}\n"
+		if err := os.WriteFile("pnpm-lock.yaml", []byte(lockfile), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		a := &pnpm.Adapter{}
+		_, err := a.ParseLockfile(context.Background())
+		if err == nil {
+			t.Fatal("expected error for double slash key, got nil")
+		}
+	})
+
+	t.Run("property outside package entry", func(t *testing.T) {
+		dir := t.TempDir()
+		oldWd, _ := os.Getwd()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := os.Chdir(oldWd); err != nil {
+				t.Error(err)
+			}
+		}()
+
+		lockfile := "lockfileVersion: '9.0'\npackages:\n  /pkg/1.0.0:\n    resolution: {integrity: sha512-test==}\n    dev: false\n  resolution:\n"
+		if err := os.WriteFile("pnpm-lock.yaml", []byte(lockfile), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		a := &pnpm.Adapter{}
+		_, err := a.ParseLockfile(context.Background())
+		if err == nil {
+			t.Fatal("expected error for property outside package entry, got nil")
+		}
+	})
+}
+
+// ──────────────────────────────────────────────
+// Empty data
+// ──────────────────────────────────────────────
+
+func TestParseLockfile_EmptyData(t *testing.T) {
+	t.Run("empty lockfile", func(t *testing.T) {
+		dir := t.TempDir()
+		oldWd, _ := os.Getwd()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := os.Chdir(oldWd); err != nil {
+				t.Error(err)
+			}
+		}()
+
+		if err := os.WriteFile("pnpm-lock.yaml", []byte(""), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		a := &pnpm.Adapter{}
+		nodes, err := a.ParseLockfile(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(nodes) != 0 {
+			t.Errorf("expected 0 nodes, got %d", len(nodes))
+		}
+	})
+}
+
+// ──────────────────────────────────────────────
 // Registration
 // ──────────────────────────────────────────────
 
