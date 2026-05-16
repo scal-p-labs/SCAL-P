@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -11,19 +12,19 @@ import (
 	"scal-p/internal/trust"
 )
 
-func runPolicy(args []string) error {
+func runPolicy(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("policy requires a subcommand")
 	}
 	switch args[0] {
 	case "check":
-		return runPolicyCheck(args[1:])
+		return runPolicyCheck(ctx, args[1:])
 	default:
 		return fmt.Errorf("unknown policy subcommand: %s", args[0])
 	}
 }
 
-func runPolicyCheck(args []string) error {
+func runPolicyCheck(ctx context.Context, args []string) error {
 	fs := newFlagSet("policy-check")
 	cfg := &cliConfig{}
 	fs.StringVar(&cfg.pm, "pm", "npm", "package manager: npm|pnpm|yarn")
@@ -45,7 +46,6 @@ func runPolicyCheck(args []string) error {
 		return err
 	}
 
-	ctx := runCtx
 	pol, polInfo, err := policy.Load(ctx, cfg.policyPath)
 	if err != nil {
 		return err
