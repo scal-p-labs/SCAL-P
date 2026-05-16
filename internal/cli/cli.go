@@ -17,8 +17,6 @@ import (
 	"scal-p/internal/version"
 )
 
-var runCtx context.Context
-
 func init() {
 	npm.Register()
 	pnpm.Register()
@@ -29,7 +27,6 @@ func Run(args []string) error {
 }
 
 func RunContext(ctx context.Context, args []string) error {
-	runCtx = ctx
 	args = filterGlobalFlags(args)
 
 	if len(args) == 0 {
@@ -41,17 +38,17 @@ func RunContext(ctx context.Context, args []string) error {
 		slog.Info("version", "version", version.Version, "commit", version.Commit, "date", version.Date)
 		return nil
 	case "install":
-		return runInstall(args[1:])
+		return runInstall(ctx, args[1:])
 	case "audit":
-		return runAudit(args[1:])
+		return runAudit(ctx, args[1:])
 	case "ci":
-		return runCi(args[1:])
+		return runCi(ctx, args[1:])
 	case "verify":
-		return runVerify(args[1:])
+		return runVerify(ctx, args[1:])
 	case "checksum":
-		return runChecksum(args[1:])
+		return runChecksum(ctx, args[1:])
 	case "policy":
-		return runPolicy(args[1:])
+		return runPolicy(ctx, args[1:])
 	case "help", "-h", "--help":
 		return usageError()
 	default:
