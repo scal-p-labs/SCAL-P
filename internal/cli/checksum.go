@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,7 +9,7 @@ import (
 	"scal-p/internal/hash"
 )
 
-func runChecksum(args []string) error {
+func runChecksum(ctx context.Context, args []string) error {
 	fs := newFlagSet("checksum")
 	output := fs.String("output", "", "write output to file instead of stdout")
 
@@ -21,7 +22,6 @@ func runChecksum(args []string) error {
 		return fmt.Errorf("at least one file required")
 	}
 
-	ctx := runCtx
 	var lines string
 
 	for _, f := range files {
