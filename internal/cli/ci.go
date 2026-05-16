@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -14,7 +15,7 @@ import (
 	"scal-p/internal/trust"
 )
 
-func runCi(args []string) error {
+func runCi(ctx context.Context, args []string) error {
 	fs := newFlagSet("ci")
 	cfg := &cliConfig{}
 	fs.StringVar(&cfg.pm, "pm", "npm", "package manager: npm|pnpm")
@@ -43,8 +44,7 @@ func runCi(args []string) error {
 		return err
 	}
 
-	ctxBg := runCtx
-	pol, polInfo, err := policy.Load(ctxBg, cfg.policyPath)
+	pol, polInfo, err := policy.Load(ctx, cfg.policyPath)
 	if err != nil {
 		return err
 	}
@@ -58,11 +58,11 @@ func runCi(args []string) error {
 		slog.Info("fork context: require_hash enforced, install scripts blocked")
 	}
 
-	if err := pm.Resolve(ctxBg, fs.Args()...); err != nil {
+	if err := pm.Resolve(ctx, fs.Args()...); err != nil {
 		return fmt.Errorf("resolve: %w", err)
 	}
 
-	nodes, err := pm.ParseLockfile(ctxBg)
+	nodes, err := pm.ParseLockfile(ctx)
 	if err != nil {
 		return fmt.Errorf("parse lockfile: %w", err)
 	}
@@ -73,12 +73,12 @@ func runCi(args []string) error {
 	}
 
 	if pol.Trust.MinScore > 0 || pol.Trust.RequireHash {
-		lf, lfErr := lockfile.Load(ctxBg, ".scalp/lockfile.json")
+		lf, lfErr := lockfile.Load(ctx, ".scalp/lockfile.json")
 		if lfErr != nil {
 			slog.Warn("trust score: no lockfile, using offline-only factors", "err", lfErr)
 		} else {
 			scorer := trust.NewScorer(trust.DefaultCacheFile)
-			trustVs, tvErr := scorer.Evaluate(ctxBg, pol, nodes, &lf)
+			trustVs, tvErr := scorer.Evaluate(ctx, pol, nodes, &lf)
 			if tvErr != nil {
 				slog.Warn("trust score", "err", tvErr)
 			} else {
@@ -99,32 +99,32 @@ func runCi(args []string) error {
 		installArgs = append([]string{"--ignore-scripts"}, installArgs...)
 	}
 
-	if err := pm.Install(ctxBg, installArgs...); err != nil {
+	if err := pm.Install(ctx, installArgs...); err != nil {
 		return fmt.Errorf("install: %w", err)
 	}
 
-	depTree, err := pm.GetTree(ctxBg)
+	depTree, err := pm.GetTree(ctx)
 	if err != nil {
 		return fmt.Errorf("get tree: %w", err)
 	}
 
 	lfPath := filepath.Join(".scalp", "lockfile.json")
-	lf, err := lockfile.Load(ctxBg, lfPath)
+	lf, err := lockfile.Load(ctx, lfPath)
 	if err != nil {
 		return fmt.Errorf("load lockfile: %w", err)
 	}
 
-	hashEvents, err := lockfile.SyncWithTree(ctxBg, &lf, depTree, pm)
+	hashEvents, err := lockfile.SyncWithTree(ctx, &lf, depTree, pm)
 	if err != nil {
 		return fmt.Errorf("sync lockfile: %w", err)
 	}
 
 	lf.GeneratedAt = time.Now().UTC().Format(time.RFC3339)
-	if err := lockfile.Save(ctxBg, lfPath, lf); err != nil {
+	if err := lockfile.Save(ctx, lfPath, lf); err != nil {
 		return fmt.Errorf("save lockfile: %w", err)
 	}
 
-	auditViolations, auditEvents, err := lockfile.VerifyAgainstTree(ctxBg, &lf, depTree, pm)
+	auditViolations, auditEvents, err := lockfile.VerifyAgainstTree(ctx, &lf, depTree, pm)
 	if err != nil {
 		return fmt.Errorf("verify tree: %w", err)
 	}
