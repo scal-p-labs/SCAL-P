@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -14,7 +15,7 @@ import (
 	"scal-p/internal/trust"
 )
 
-func runInstall(args []string) error {
+func runInstall(ctx context.Context, args []string) error {
 	fs := newFlagSet("install")
 	cfg := &cliConfig{}
 	fs.StringVar(&cfg.pm, "pm", "npm", "package manager: npm|pnpm|yarn")
@@ -38,7 +39,6 @@ func runInstall(args []string) error {
 		return err
 	}
 
-	ctx := runCtx
 	pol, polInfo, err := policy.Load(ctx, cfg.policyPath)
 	if err != nil {
 		return err
