@@ -1,18 +1,19 @@
 package trust
 
 import (
+	"bufio"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
-	"net/http"
+	"net"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"scal-p/internal/ctxutil"
 	"scal-p/internal/lockfile"
@@ -43,7 +44,6 @@ type PackageScore struct {
 
 type Scorer struct {
 	cachePath string
-	client    *http.Client
 	apiURL    string
 	auditFunc func(ctx context.Context) map[string][]string
 	workers   int
@@ -52,7 +52,6 @@ type Scorer struct {
 func NewScorer(cachePath string) *Scorer {
 	return &Scorer{
 		cachePath: cachePath,
-		client:    &http.Client{Timeout: 10 * time.Second},
 		apiURL:    "https://api.npmjs.org",
 		workers:   defaultWorkers,
 	}
@@ -65,10 +64,6 @@ func (s *Scorer) SetWorkers(n int) {
 		n = defaultWorkers
 	}
 	s.workers = n
-}
-
-func (s *Scorer) SetHTTPClient(c *http.Client) {
-	s.client = c
 }
 
 func (s *Scorer) SetAPIURL(url string) {
@@ -236,34 +231,77 @@ func (s *Scorer) scoreDownloadsCached(ctx context.Context, pkgName string, cache
 	return ScoreDownloadsByCount(downloads)
 }
 
-func (s *Scorer) fetchWeeklyDownloads(ctx context.Context, pkgName string) (int, error) {
-	url := s.apiURL + "/downloads/point/last-week/" + pkgName
+// FetchDownloadsFunc is the signature for downloading weekly counts.
+type FetchDownloadsFunc func(ctx context.Context, apiURL, pkgName string) (int, error)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+var fetchDownloads FetchDownloadsFunc = defaultFetchDownloads
+
+func defaultFetchDownloads(ctx context.Context, apiURL, pkgName string) (int, error) {
+	host := strings.TrimPrefix(apiURL, "https://")
+	path := "/downloads/point/last-week/" + pkgName
+
+	dialer := net.Dialer{}
+	conn, err := tls.DialWithDialer(&dialer, "tcp", host+":443", &tls.Config{})
 	if err != nil {
-		return 0, fmt.Errorf("create request: %w", err)
+		return 0, fmt.Errorf("connect: %w", err)
 	}
-	req.Header.Set("Accept", "application/json")
+	defer conn.Close()
 
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return 0, fmt.Errorf("fetch downloads: %w", err)
+	if deadline, ok := ctx.Deadline(); ok {
+		conn.SetDeadline(deadline)
 	}
-	defer resp.Body.Close() //nolint:errcheck
 
-	body, err := io.ReadAll(resp.Body)
+	req := fmt.Sprintf("GET %s HTTP/1.1\r\nHost: %s\r\nAccept: application/json\r\nConnection: close\r\n\r\n", path, host)
+	if _, err := fmt.Fprint(conn, req); err != nil {
+		return 0, fmt.Errorf("send request: %w", err)
+	}
+
+	br := bufio.NewReader(conn)
+
+	statusLine, err := br.ReadString('\n')
 	if err != nil {
-		return 0, fmt.Errorf("read response: %w", err)
+		return 0, fmt.Errorf("read status: %w", err)
+	}
+	parts := strings.SplitN(statusLine, " ", 3)
+	if len(parts) < 2 || parts[1] != "200" {
+		return 0, fmt.Errorf("unexpected status: %s", strings.TrimSpace(statusLine))
+	}
+
+	for {
+		line, err := br.ReadString('\n')
+		if err != nil {
+			return 0, fmt.Errorf("read header: %w", err)
+		}
+		if line == "\r\n" || line == "\n" {
+			break
+		}
+	}
+
+	body, err := io.ReadAll(br)
+	if err != nil {
+		return 0, fmt.Errorf("read body: %w", err)
 	}
 
 	var dl struct {
 		Downloads int `json:"downloads"`
 	}
 	if err := json.Unmarshal(body, &dl); err != nil {
-		return 0, fmt.Errorf("parse downloads response: %w", err)
+		return 0, fmt.Errorf("parse response: %w", err)
 	}
 
 	return dl.Downloads, nil
+}
+
+func (s *Scorer) fetchWeeklyDownloads(ctx context.Context, pkgName string) (int, error) {
+	return fetchDownloads(ctx, s.apiURL, pkgName)
+}
+
+// SetFetchDownloads overrides the weekly-downloads fetch function for testing.
+// It returns a restore function that reverts to the previous value.
+func SetFetchDownloads(fn FetchDownloadsFunc) func() {
+	old := fetchDownloads
+	fetchDownloads = fn
+	return func() { fetchDownloads = old }
 }
 
 func ScoreDownloadsByCount(n int) int {

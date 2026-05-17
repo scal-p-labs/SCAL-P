@@ -12,6 +12,8 @@ builds:
     binary: scalp
     env:
       - CGO_ENABLED=0
+    flags:
+      - -trimpath
     ldflags:
       - -s -w -X scal-p/internal/version.Version={{.Version}} -X scal-p/internal/version.Commit={{.Commit}} -X scal-p/internal/version.Date={{.Date}}
     goos:

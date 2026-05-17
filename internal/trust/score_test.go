@@ -2,9 +2,6 @@ package trust_test
 
 import (
 	"context"
-	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -16,25 +13,18 @@ import (
 	"scal-p/internal/trust"
 )
 
-func mockDownloadsServer(t *testing.T, downloads int) (*httptest.Server, func()) {
-	t.Helper()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"downloads": ` + fmt.Sprintf("%d", downloads) + `}`)) //nolint:errcheck
-	}))
-	return server, server.Close
-}
-
-func testScorer(t *testing.T, server *httptest.Server) *trust.Scorer {
+func testScorer(t *testing.T, downloads int) *trust.Scorer {
 	t.Helper()
 	s := trust.NewScorer(t.TempDir() + "/trust.json")
-	s.SetHTTPClient(server.Client())
-	s.SetAPIURL(server.URL)
+	restore := trust.SetFetchDownloads(func(ctx context.Context, apiURL, pkgName string) (int, error) {
+		return downloads, nil
+	})
+	t.Cleanup(restore)
 	return s
 }
 
 func TestScoreHash(t *testing.T) {
-	server, close := mockDownloadsServer(t, 0)
-	defer close()
+	scorer := testScorer(t, 0)
 
 	t.Run("hash verified gives 30 pts", func(t *testing.T) {
 		lf := lockfile.Lockfile{
@@ -46,7 +36,6 @@ func TestScoreHash(t *testing.T) {
 		node := pkgmanager.PackageNode{Name: "lodash", Version: "4.17.21"}
 		pol := policy.Policy{Trust: policy.Trust{MinScore: 30}}
 
-		scorer := testScorer(t, server)
 		nodes := []pkgmanager.PackageNode{node}
 		violations, err := scorer.Evaluate(context.Background(), pol, nodes, &lf)
 		if err != nil {
@@ -65,7 +54,6 @@ func TestScoreHash(t *testing.T) {
 		node := pkgmanager.PackageNode{Name: "unverified", Version: "0.5.0"}
 		pol := policy.Policy{Trust: policy.Trust{MinScore: 30}}
 
-		scorer := testScorer(t, server)
 		violations, err := scorer.Evaluate(context.Background(), pol, []pkgmanager.PackageNode{node}, &lf)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -80,8 +68,7 @@ func TestScoreHash(t *testing.T) {
 }
 
 func TestRequireHash(t *testing.T) {
-	server, close := mockDownloadsServer(t, 0)
-	defer close()
+	scorer := testScorer(t, 0)
 
 	t.Run("RequireHash blocks package without lockfile entry", func(t *testing.T) {
 		lf := lockfile.Lockfile{
@@ -91,7 +78,6 @@ func TestRequireHash(t *testing.T) {
 		node := pkgmanager.PackageNode{Name: "fresh", Version: "1.0.0"}
 		pol := policy.Policy{Trust: policy.Trust{RequireHash: true, MinScore: 0}}
 
-		scorer := testScorer(t, server)
 		violations, err := scorer.Evaluate(context.Background(), pol, []pkgmanager.PackageNode{node}, &lf)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -117,7 +103,6 @@ func TestRequireHash(t *testing.T) {
 		node := pkgmanager.PackageNode{Name: "safe", Version: "2.0.0"}
 		pol := policy.Policy{Trust: policy.Trust{RequireHash: true, MinScore: 0}}
 
-		scorer := testScorer(t, server)
 		violations, err := scorer.Evaluate(context.Background(), pol, []pkgmanager.PackageNode{node}, &lf)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -141,7 +126,6 @@ func TestRequireHash(t *testing.T) {
 		}
 		pol := policy.Policy{Trust: policy.Trust{RequireHash: true, MinScore: 50}}
 
-		scorer := testScorer(t, server)
 		violations, err := scorer.Evaluate(context.Background(), pol, nodes, &lf)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -202,8 +186,7 @@ func TestDownloadsThreshold(t *testing.T) {
 }
 
 func TestEvaluate_offlineUnknownGetsHalfPoints(t *testing.T) {
-	server, close := mockDownloadsServer(t, 0)
-	defer close()
+	scorer := testScorer(t, 0)
 
 	lf := lockfile.Lockfile{
 		LockVersion: 1,
@@ -214,7 +197,6 @@ func TestEvaluate_offlineUnknownGetsHalfPoints(t *testing.T) {
 	node := pkgmanager.PackageNode{Name: "pkg", Version: "1.0.0"}
 	pol := policy.Policy{Trust: policy.Trust{MinScore: 70}}
 
-	scorer := testScorer(t, server)
 	violations, err := scorer.Evaluate(context.Background(), pol, []pkgmanager.PackageNode{node}, &lf)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -244,10 +226,8 @@ func TestScoreWithZeroCVEs(t *testing.T) {
 }
 
 func TestEvaluate_minScoreZeroSkips(t *testing.T) {
-	server, close := mockDownloadsServer(t, 0)
-	defer close()
+	scorer := testScorer(t, 0)
 
-	scorer := testScorer(t, server)
 	pol := policy.Policy{Trust: policy.Trust{MinScore: 0}}
 	violations, err := scorer.Evaluate(context.Background(), pol, nil, nil)
 	if err != nil {
@@ -259,8 +239,7 @@ func TestEvaluate_minScoreZeroSkips(t *testing.T) {
 }
 
 func TestEvaluate_multiplePackages(t *testing.T) {
-	server, close := mockDownloadsServer(t, 0)
-	defer close()
+	scorer := testScorer(t, 0)
 
 	lf := lockfile.Lockfile{
 		LockVersion: 1,
@@ -274,7 +253,6 @@ func TestEvaluate_multiplePackages(t *testing.T) {
 	}
 	pol := policy.Policy{Trust: policy.Trust{MinScore: 30}}
 
-	scorer := testScorer(t, server)
 	violations, err := scorer.Evaluate(context.Background(), pol, nodes, &lf)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -288,14 +266,7 @@ func TestEvaluate_multiplePackages(t *testing.T) {
 }
 
 func TestEvaluate_withDownloadScore(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"downloads": 500000}`)) //nolint:errcheck
-	}))
-	defer server.Close()
-
-	scorer := trust.NewScorer(t.TempDir() + "/trust.json")
-	scorer.SetHTTPClient(server.Client())
-	scorer.SetAPIURL(server.URL)
+	scorer := testScorer(t, 500000)
 
 	lf := lockfile.Lockfile{
 		LockVersion: 1,
@@ -318,9 +289,6 @@ func TestEvaluate_withDownloadScore(t *testing.T) {
 }
 
 func TestCVEScoring(t *testing.T) {
-	server, close := mockDownloadsServer(t, 0)
-	defer close()
-
 	t.Run("npm audit succeeds with CVEs gives 0 pts", func(t *testing.T) {
 		lf := lockfile.Lockfile{
 			LockVersion: 1,
@@ -331,12 +299,16 @@ func TestCVEScoring(t *testing.T) {
 		node := pkgmanager.PackageNode{Name: "evil", Version: "1.0.0"}
 		pol := policy.Policy{Trust: policy.Trust{MinScore: 100}}
 
-		scorer := testScorer(t, server)
-		scorer.SetAuditFunc(func(ctx context.Context) map[string][]string {
+		s2 := trust.NewScorer(t.TempDir() + "/trust.json")
+		restore := trust.SetFetchDownloads(func(ctx context.Context, apiURL, pkgName string) (int, error) {
+			return 0, nil
+		})
+		t.Cleanup(restore)
+		s2.SetAuditFunc(func(ctx context.Context) map[string][]string {
 			return map[string][]string{"evil": {"critical"}}
 		})
 
-		violations, err := scorer.Evaluate(context.Background(), pol, []pkgmanager.PackageNode{node}, &lf)
+		violations, err := s2.Evaluate(context.Background(), pol, []pkgmanager.PackageNode{node}, &lf)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -355,12 +327,16 @@ func TestCVEScoring(t *testing.T) {
 		node := pkgmanager.PackageNode{Name: "clean", Version: "1.0.0"}
 		pol := policy.Policy{Trust: policy.Trust{MinScore: 60}}
 
-		scorer := testScorer(t, server)
-		scorer.SetAuditFunc(func(ctx context.Context) map[string][]string {
+		s2 := trust.NewScorer(t.TempDir() + "/trust.json")
+		restore := trust.SetFetchDownloads(func(ctx context.Context, apiURL, pkgName string) (int, error) {
+			return 0, nil
+		})
+		t.Cleanup(restore)
+		s2.SetAuditFunc(func(ctx context.Context) map[string][]string {
 			return map[string][]string{}
 		})
 
-		violations, err := scorer.Evaluate(context.Background(), pol, []pkgmanager.PackageNode{node}, &lf)
+		violations, err := s2.Evaluate(context.Background(), pol, []pkgmanager.PackageNode{node}, &lf)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -390,14 +366,16 @@ func TestCVEScoring(t *testing.T) {
 		node := pkgmanager.PackageNode{Name: "pkg", Version: "1.0.0"}
 		pol := policy.Policy{Trust: policy.Trust{MinScore: 50}}
 
-		scorer := trust.NewScorer(cachePath)
-		scorer.SetHTTPClient(server.Client())
-		scorer.SetAPIURL(server.URL)
-		scorer.SetAuditFunc(func(ctx context.Context) map[string][]string {
+		s2 := trust.NewScorer(cachePath)
+		restore := trust.SetFetchDownloads(func(ctx context.Context, apiURL, pkgName string) (int, error) {
+			return 0, nil
+		})
+		t.Cleanup(restore)
+		s2.SetAuditFunc(func(ctx context.Context) map[string][]string {
 			return nil
 		})
 
-		violations, err := scorer.Evaluate(context.Background(), pol, []pkgmanager.PackageNode{node}, &lf)
+		violations, err := s2.Evaluate(context.Background(), pol, []pkgmanager.PackageNode{node}, &lf)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -416,14 +394,16 @@ func TestCVEScoring(t *testing.T) {
 		node := pkgmanager.PackageNode{Name: "unknown", Version: "1.0.0"}
 		pol := policy.Policy{Trust: policy.Trust{MinScore: 70}}
 
-		scorer := trust.NewScorer(t.TempDir() + "/trust.json")
-		scorer.SetHTTPClient(server.Client())
-		scorer.SetAPIURL(server.URL)
-		scorer.SetAuditFunc(func(ctx context.Context) map[string][]string {
+		s2 := trust.NewScorer(t.TempDir() + "/trust.json")
+		restore := trust.SetFetchDownloads(func(ctx context.Context, apiURL, pkgName string) (int, error) {
+			return 0, nil
+		})
+		t.Cleanup(restore)
+		s2.SetAuditFunc(func(ctx context.Context) map[string][]string {
 			return nil
 		})
 
-		violations, err := scorer.Evaluate(context.Background(), pol, []pkgmanager.PackageNode{node}, &lf)
+		violations, err := s2.Evaluate(context.Background(), pol, []pkgmanager.PackageNode{node}, &lf)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -438,9 +418,6 @@ func TestCVEScoring(t *testing.T) {
 }
 
 func TestAdversarial_cachePoisoning(t *testing.T) {
-	server, close := mockDownloadsServer(t, 0)
-	defer close()
-
 	t.Run("stale cache with expired entry triggers refresh", func(t *testing.T) {
 		dir := t.TempDir()
 		cachePath := dir + "/trust.json"
@@ -464,12 +441,14 @@ func TestAdversarial_cachePoisoning(t *testing.T) {
 			},
 		}
 		pol := policy.Policy{Trust: policy.Trust{MinScore: 50}}
-		scorer := trust.NewScorer(cachePath)
-		scorer.SetHTTPClient(server.Client())
-		scorer.SetAPIURL(server.URL)
-		scorer.SetAuditFunc(func(ctx context.Context) map[string][]string { return nil })
+		s2 := trust.NewScorer(cachePath)
+		restore := trust.SetFetchDownloads(func(ctx context.Context, apiURL, pkgName string) (int, error) {
+			return 0, nil
+		})
+		t.Cleanup(restore)
+		s2.SetAuditFunc(func(ctx context.Context) map[string][]string { return nil })
 
-		violations, err := scorer.Evaluate(context.Background(), pol, []pkgmanager.PackageNode{
+		violations, err := s2.Evaluate(context.Background(), pol, []pkgmanager.PackageNode{
 			{Name: "old-pkg", Version: "1.0.0"},
 		}, &lf)
 		if err != nil {
@@ -508,12 +487,14 @@ func TestAdversarial_cachePoisoning(t *testing.T) {
 			},
 		}
 		pol := policy.Policy{Trust: policy.Trust{MinScore: 50}}
-		scorer := trust.NewScorer(cachePath)
-		scorer.SetHTTPClient(server.Client())
-		scorer.SetAPIURL(server.URL)
-		scorer.SetAuditFunc(func(ctx context.Context) map[string][]string { return nil })
+		s2 := trust.NewScorer(cachePath)
+		restore := trust.SetFetchDownloads(func(ctx context.Context, apiURL, pkgName string) (int, error) {
+			return 0, nil
+		})
+		t.Cleanup(restore)
+		s2.SetAuditFunc(func(ctx context.Context) map[string][]string { return nil })
 
-		violations, err := scorer.Evaluate(context.Background(), pol, []pkgmanager.PackageNode{
+		violations, err := s2.Evaluate(context.Background(), pol, []pkgmanager.PackageNode{
 			{Name: "poisoned", Version: "1.0.0"},
 		}, &lf)
 		if err != nil {
@@ -561,8 +542,7 @@ func TestScoreBreakdown(t *testing.T) {
 }
 
 func TestViolationMessageContainsBreakdown(t *testing.T) {
-	server, close := mockDownloadsServer(t, 0)
-	defer close()
+	scorer := testScorer(t, 0)
 
 	lf := lockfile.Lockfile{
 		LockVersion: 1,
@@ -571,7 +551,6 @@ func TestViolationMessageContainsBreakdown(t *testing.T) {
 	node := pkgmanager.PackageNode{Name: "test", Version: "0.1.0"}
 	pol := policy.Policy{Trust: policy.Trust{MinScore: 50}}
 
-	scorer := testScorer(t, server)
 	violations, err := scorer.Evaluate(context.Background(), pol, []pkgmanager.PackageNode{node}, &lf)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

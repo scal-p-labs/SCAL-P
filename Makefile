@@ -12,6 +12,7 @@ build:
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p $(BIN_DIR)
 	go build \
+		-trimpath \
 		-ldflags "-s -w -X scal-p/internal/version.Version=$(VERSION) -X scal-p/internal/version.Commit=$(COMMIT) -X scal-p/internal/version.Date=$(DATE)" \
 		-o $(BIN_DIR)/$(BINARY_NAME) $(MAIN_PATH)
 	@echo "Binary created at $(BIN_DIR)/$(BINARY_NAME)"
