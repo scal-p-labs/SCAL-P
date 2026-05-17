@@ -1,6 +1,11 @@
 package cli
 
-import "cmp"
+import (
+	"cmp"
+	"log/slog"
+
+	"scal-p/internal/pkgmanager"
+)
 
 type cliConfig struct {
 	policyPath   string
@@ -14,5 +19,13 @@ type cliConfig struct {
 
 func applyDefaults(cfg *cliConfig) {
 	cfg.policyPath = cmp.Or(cfg.policyPath, ".scalp/policy.json")
-	cfg.pm = cmp.Or(cfg.pm, "npm")
+	if cfg.pm == "" {
+		detected, err := pkgmanager.Detect()
+		if err == nil {
+			cfg.pm = detected
+		} else {
+			slog.Debug("auto-detect package manager", "err", err)
+			cfg.pm = "npm"
+		}
+	}
 }

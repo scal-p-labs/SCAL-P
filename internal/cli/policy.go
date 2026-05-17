@@ -27,7 +27,7 @@ func runPolicy(ctx context.Context, args []string) error {
 func runPolicyCheck(ctx context.Context, args []string) error {
 	fs := newFlagSet("policy-check")
 	cfg := &cliConfig{}
-	fs.StringVar(&cfg.pm, "pm", "npm", "package manager: npm|pnpm|yarn")
+	fs.StringVar(&cfg.pm, "pm", "", "package manager (auto-detected from lockfile)")
 	fs.StringVar(&cfg.policyPath, "policy", ".scalp/policy.json", "policy path")
 	fs.BoolVar(&cfg.ci, "ci", false, "set enforcement to block on violation")
 

@@ -18,7 +18,7 @@ import (
 func runInstall(ctx context.Context, args []string) error {
 	fs := newFlagSet("install")
 	cfg := &cliConfig{}
-	fs.StringVar(&cfg.pm, "pm", "npm", "package manager: npm|pnpm|yarn")
+	fs.StringVar(&cfg.pm, "pm", "", "package manager (auto-detected from lockfile)")
 	fs.StringVar(&cfg.policyPath, "policy", ".scalp/policy.json", "policy path")
 	fs.BoolVar(&cfg.guarded, "guarded", false, "enforce policy and hash checks before install")
 	fs.BoolVar(&cfg.ci, "ci", false, "set enforcement to block on violation")

@@ -20,7 +20,7 @@ import (
 func runAudit(ctx context.Context, args []string) error {
 	fs := newFlagSet("audit")
 	cfg := &cliConfig{}
-	fs.StringVar(&cfg.pm, "pm", "npm", "package manager: npm|pnpm")
+	fs.StringVar(&cfg.pm, "pm", "", "package manager (auto-detected from lockfile)")
 	fs.StringVar(&cfg.policyPath, "policy", ".scalp/policy.json", "policy path")
 	fs.BoolVar(&cfg.ci, "ci", false, "set enforcement to block on violation")
 	fs.StringVar(&cfg.report, "report", "", "report output path (e.g. audit-report.md)")
