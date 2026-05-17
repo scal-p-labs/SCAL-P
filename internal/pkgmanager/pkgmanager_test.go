@@ -1,6 +1,7 @@
 package pkgmanager_test
 
 import (
+	"fmt"
 	"testing"
 
 	"scal-p/internal/pkgmanager"
@@ -9,7 +10,10 @@ import (
 func TestFlatten(t *testing.T) {
 	t.Run("nil dependencies returns nil", func(t *testing.T) {
 		tree := pkgmanager.DependencyTree{Name: "root", Version: "1.0"}
-		nodes := pkgmanager.Flatten(tree)
+		nodes, err := pkgmanager.Flatten(tree)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if nodes != nil {
 			t.Errorf("expected nil, got %v", nodes)
 		}
@@ -21,7 +25,10 @@ func TestFlatten(t *testing.T) {
 			Version:      "1.0",
 			Dependencies: map[string]pkgmanager.DependencyRef{},
 		}
-		nodes := pkgmanager.Flatten(tree)
+		nodes, err := pkgmanager.Flatten(tree)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if len(nodes) != 0 {
 			t.Errorf("expected 0 nodes, got %d", len(nodes))
 		}
@@ -36,7 +43,10 @@ func TestFlatten(t *testing.T) {
 				"b": {Version: "2.0"},
 			},
 		}
-		nodes := pkgmanager.Flatten(tree)
+		nodes, err := pkgmanager.Flatten(tree)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if len(nodes) != 2 {
 			t.Fatalf("expected 2 nodes, got %d", len(nodes))
 		}
@@ -60,7 +70,10 @@ func TestFlatten(t *testing.T) {
 				},
 			},
 		}
-		nodes := pkgmanager.Flatten(tree)
+		nodes, err := pkgmanager.Flatten(tree)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if len(nodes) != 2 {
 			t.Fatalf("expected 2 nodes, got %d", len(nodes))
 		}
@@ -90,7 +103,10 @@ func TestFlatten(t *testing.T) {
 				},
 			},
 		}
-		nodes := pkgmanager.Flatten(tree)
+		nodes, err := pkgmanager.Flatten(tree)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if len(nodes) != 2 {
 			t.Fatalf("expected 2 nodes, got %d", len(nodes))
 		}
@@ -109,6 +125,44 @@ func TestFlatten(t *testing.T) {
 		}
 		if !foundV4 {
 			t.Error("missing lodash@4.17.21 at depth 0")
+		}
+	})
+}
+
+func TestFlatten_ExceedsLimit(t *testing.T) {
+	t.Run("returns error when tree exceeds max nodes", func(t *testing.T) {
+		deps := map[string]pkgmanager.DependencyRef{}
+		const overLimit = 100001
+		for i := range overLimit {
+			deps[fmt.Sprintf("pkg-%d", i)] = pkgmanager.DependencyRef{Version: "1.0"}
+		}
+		tree := pkgmanager.DependencyTree{
+			Name:         "root",
+			Version:      "1.0",
+			Dependencies: deps,
+		}
+		_, err := pkgmanager.Flatten(tree)
+		if err == nil {
+			t.Fatal("expected error for tree exceeding max nodes")
+		}
+	})
+
+	t.Run("large tree just under limit succeeds", func(t *testing.T) {
+		deps := map[string]pkgmanager.DependencyRef{}
+		for i := range 100000 {
+			deps[fmt.Sprintf("pkg-%d", i)] = pkgmanager.DependencyRef{Version: "1.0"}
+		}
+		tree := pkgmanager.DependencyTree{
+			Name:         "root",
+			Version:      "1.0",
+			Dependencies: deps,
+		}
+		nodes, err := pkgmanager.Flatten(tree)
+		if err != nil {
+			t.Fatalf("unexpected error for 100K deps: %v", err)
+		}
+		if len(nodes) != 100000 {
+			t.Errorf("expected 100000 nodes, got %d", len(nodes))
 		}
 	})
 }

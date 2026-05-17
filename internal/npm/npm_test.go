@@ -307,7 +307,10 @@ func TestFlatten_duplicateVersions(t *testing.T) {
 			},
 		}
 
-		nodes := pkgmanager.Flatten(tree)
+		nodes, err := pkgmanager.Flatten(tree)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if len(nodes) != 2 {
 			t.Fatalf("expected 2 nodes for lodash@3 + lodash@4, got %d", len(nodes))
 		}
@@ -345,7 +348,10 @@ func TestFlatten_duplicateVersions(t *testing.T) {
 			Dependencies: deps,
 		}
 
-		nodes := pkgmanager.Flatten(tree)
+		nodes, err := pkgmanager.Flatten(tree)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if len(nodes) != 5 {
 			t.Fatalf("expected 5 nodes, got %d", len(nodes))
 		}
