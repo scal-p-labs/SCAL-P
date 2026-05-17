@@ -13,8 +13,8 @@ import (
 	"scal-p/internal/pkgmanager"
 )
 
-// mockExec overrides npm's command factory to produce controlled output.
-func mockExec(t *testing.T, stdout string, exitCode int) {
+// mkAdapter returns an *npm.Adapter whose CommandContext runs a mock shell script.
+func mkAdapter(t *testing.T, stdout string, exitCode int) *npm.Adapter {
 	t.Helper()
 	dir := t.TempDir()
 	outPath := filepath.Join(dir, "stdout")
@@ -28,14 +28,15 @@ func mockExec(t *testing.T, stdout string, exitCode int) {
 		t.Fatal(err)
 	}
 
-	restore := npm.SetExecCommand(func(ctx context.Context, name string, arg ...string) *exec.Cmd {
-		return exec.CommandContext(ctx, scriptPath)
-	})
-	t.Cleanup(func() { npm.SetExecCommand(restore) })
+	a := npm.New()
+	a.CommandContext = func(_ context.Context, _ string, _ ...string) *exec.Cmd {
+		return exec.CommandContext(context.Background(), scriptPath)
+	}
+	return a
 }
 
-// mockExecCheckArgs overrides npm's command factory and also checks the args.
-func mockExecCheckArgs(t *testing.T, stdout string, exitCode int, checkFn func(name string, args []string)) {
+// mkAdapterCheckArgs is like mkAdapter but also checks the passed command via checkFn.
+func mkAdapterCheckArgs(t *testing.T, stdout string, exitCode int, checkFn func(name string, args []string)) *npm.Adapter {
 	t.Helper()
 	dir := t.TempDir()
 	outPath := filepath.Join(dir, "stdout")
@@ -49,11 +50,12 @@ func mockExecCheckArgs(t *testing.T, stdout string, exitCode int, checkFn func(n
 		t.Fatal(err)
 	}
 
-	restore := npm.SetExecCommand(func(ctx context.Context, name string, arg ...string) *exec.Cmd {
+	a := npm.New()
+	a.CommandContext = func(_ context.Context, name string, arg ...string) *exec.Cmd {
 		checkFn(name, arg)
-		return exec.CommandContext(ctx, scriptPath)
-	})
-	t.Cleanup(func() { npm.SetExecCommand(restore) })
+		return exec.CommandContext(context.Background(), scriptPath)
+	}
+	return a
 }
 
 // ──────────────────────────────────────────────
@@ -65,14 +67,14 @@ func TestAdapterImplementsInterface(t *testing.T) {
 }
 
 func TestAdapterName(t *testing.T) {
-	a := &npm.Adapter{}
+	a := npm.New()
 	if a.Name() != "npm" {
 		t.Errorf("expected npm, got %s", a.Name())
 	}
 }
 
 func TestAdapterLocalPath(t *testing.T) {
-	a := &npm.Adapter{}
+	a := npm.New()
 	got := a.LocalPath("lodash")
 	if got != "node_modules/lodash" {
 		t.Errorf("expected node_modules/lodash, got %s", got)
@@ -80,14 +82,14 @@ func TestAdapterLocalPath(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────
-// GetDependencyTree
+// GetTree
 // ──────────────────────────────────────────────
 
-func TestGetDependencyTree(t *testing.T) {
+func TestGetTree(t *testing.T) {
 	t.Run("successful parse", func(t *testing.T) {
-		mockExec(t, `{"name":"root","version":"1.0","dependencies":{"a":{"version":"1.0"}}}`, 0)
+		a := mkAdapter(t, `{"name":"root","version":"1.0","dependencies":{"a":{"version":"1.0"}}}`, 0)
 
-		tree, err := npm.GetDependencyTree(context.Background())
+		tree, err := a.GetTree(context.Background())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -100,7 +102,7 @@ func TestGetDependencyTree(t *testing.T) {
 	})
 
 	t.Run("sends correct command", func(t *testing.T) {
-		mockExecCheckArgs(t, `{"name":"t","dependencies":{}}`, 0,
+		a := mkAdapterCheckArgs(t, `{"name":"t","dependencies":{}}`, 0,
 			func(name string, args []string) {
 				if name != "npm" {
 					t.Errorf("expected name=npm, got %s", name)
@@ -111,15 +113,15 @@ func TestGetDependencyTree(t *testing.T) {
 				}
 			})
 
-		if _, err := npm.GetDependencyTree(context.Background()); err != nil {
+		if _, err := a.GetTree(context.Background()); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
 	t.Run("npm exits non-zero returns partial data", func(t *testing.T) {
-		mockExec(t, `{"name":"partial","version":"1.0"}`, 1)
+		a := mkAdapter(t, `{"name":"partial","version":"1.0"}`, 1)
 
-		tree, err := npm.GetDependencyTree(context.Background())
+		tree, err := a.GetTree(context.Background())
 		if err != nil {
 			t.Fatalf("partial data should still be returned: %v", err)
 		}
@@ -129,9 +131,9 @@ func TestGetDependencyTree(t *testing.T) {
 	})
 
 	t.Run("invalid JSON from npm", func(t *testing.T) {
-		mockExec(t, `{not valid json`, 0)
+		a := mkAdapter(t, `{not valid json`, 0)
 
-		_, err := npm.GetDependencyTree(context.Background())
+		_, err := a.GetTree(context.Background())
 		if err == nil {
 			t.Fatal("expected error for invalid JSON")
 		}
@@ -139,20 +141,20 @@ func TestGetDependencyTree(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────
-// RunInstall
+// Install
 // ──────────────────────────────────────────────
 
-func TestRunInstall(t *testing.T) {
+func TestInstall(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		mockExec(t, "", 0)
+		a := mkAdapter(t, "", 0)
 
-		if err := npm.RunInstall(context.Background(), nil); err != nil {
+		if err := a.Install(context.Background()); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
 	t.Run("sends correct command", func(t *testing.T) {
-		mockExecCheckArgs(t, "", 0,
+		a := mkAdapterCheckArgs(t, "", 0,
 			func(name string, args []string) {
 				if name != "npm" {
 					t.Errorf("expected name=npm, got %s", name)
@@ -162,13 +164,13 @@ func TestRunInstall(t *testing.T) {
 				}
 			})
 
-		if err := npm.RunInstall(context.Background(), nil); err != nil {
+		if err := a.Install(context.Background()); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
 	t.Run("passes extra args", func(t *testing.T) {
-		mockExecCheckArgs(t, "", 0,
+		a := mkAdapterCheckArgs(t, "", 0,
 			func(name string, args []string) {
 				got := strings.Join(args, " ")
 				if !strings.Contains(got, "lodash express") {
@@ -176,15 +178,15 @@ func TestRunInstall(t *testing.T) {
 				}
 			})
 
-		if err := npm.RunInstall(context.Background(), []string{"lodash", "express"}); err != nil {
+		if err := a.Install(context.Background(), "lodash", "express"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
 	t.Run("failure", func(t *testing.T) {
-		mockExec(t, "error message", 1)
+		a := mkAdapter(t, "error message", 1)
 
-		err := npm.RunInstall(context.Background(), nil)
+		err := a.Install(context.Background())
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -192,10 +194,10 @@ func TestRunInstall(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────
-// ResolveViaPackageLockOnly
+// Resolve
 // ──────────────────────────────────────────────
 
-func TestResolveViaPackageLockOnly(t *testing.T) {
+func TestResolve(t *testing.T) {
 	t.Run("success creates package-lock.json", func(t *testing.T) {
 		dir := t.TempDir()
 		oldWd, _ := os.Getwd()
@@ -208,13 +210,12 @@ func TestResolveViaPackageLockOnly(t *testing.T) {
 			}
 		}()
 
-		mockExec(t, "", 0)
-		// Create a fake package-lock.json so the stat check passes
+		a := mkAdapter(t, "", 0)
 		if err := os.WriteFile("package-lock.json", []byte(`{"lockfileVersion":3,"packages":{}}`), 0o644); err != nil {
 			t.Fatal(err)
 		}
 
-		if err := npm.ResolveViaPackageLockOnly(context.Background()); err != nil {
+		if err := a.Resolve(context.Background()); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -231,7 +232,7 @@ func TestResolveViaPackageLockOnly(t *testing.T) {
 			}
 		}()
 
-		mockExecCheckArgs(t, "", 0,
+		a := mkAdapterCheckArgs(t, "", 0,
 			func(name string, args []string) {
 				if name != "npm" {
 					t.Errorf("expected name=npm, got %s", name)
@@ -245,7 +246,7 @@ func TestResolveViaPackageLockOnly(t *testing.T) {
 		if err := os.WriteFile("package-lock.json", []byte(`{}`), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := npm.ResolveViaPackageLockOnly(context.Background()); err != nil {
+		if err := a.Resolve(context.Background()); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -262,9 +263,9 @@ func TestResolveViaPackageLockOnly(t *testing.T) {
 			}
 		}()
 
-		mockExec(t, "", 1)
+		a := mkAdapter(t, "", 1)
 
-		err := npm.ResolveViaPackageLockOnly(context.Background())
+		err := a.Resolve(context.Background())
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -282,9 +283,8 @@ func TestResolveViaPackageLockOnly(t *testing.T) {
 			}
 		}()
 
-		mockExec(t, "", 0)
-		// Do NOT create package-lock.json
-		err := npm.ResolveViaPackageLockOnly(context.Background())
+		a := mkAdapter(t, "", 0)
+		err := a.Resolve(context.Background())
 		if err == nil {
 			t.Fatal("expected error when package-lock.json missing")
 		}
@@ -318,7 +318,6 @@ func TestFlatten_duplicateVersions(t *testing.T) {
 			t.Fatalf("expected 2 nodes for lodash@3 + lodash@4, got %d", len(nodes))
 		}
 
-		// Find both versions
 		var foundV3, foundV4 bool
 		for _, n := range nodes {
 			if n.Name == "lodash" && n.Version == "3.10.1" && n.Depth == 1 {
@@ -486,9 +485,6 @@ func TestExtractName_nested(t *testing.T) {
 // ──────────────────────────────────────────────
 
 func TestExtractName_pathTraversal(t *testing.T) {
-	// extractName is unexported; we test via ParsePackageLock
-	// with crafted lockfiles is ideal, but here we verify the
-	// function doesn't panic or produce unexpected paths.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "package-lock.json")
 	content := `{
@@ -507,7 +503,6 @@ func TestExtractName_pathTraversal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Path traversal entries should be filtered out
 	if len(nodes) != 0 {
 		t.Errorf("expected 0 nodes from path-traversal lockfile, got %d", len(nodes))
 		for _, n := range nodes {

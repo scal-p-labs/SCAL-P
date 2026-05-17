@@ -13,8 +13,8 @@ import (
 	"scal-p/internal/pnpm"
 )
 
-// mockExec overrides pnpm's command factory to produce controlled output.
-func mockExec(t *testing.T, stdout string, exitCode int) {
+// mkAdapter returns an *pnpm.Adapter whose CommandContext runs a mock shell script.
+func mkAdapter(t *testing.T, stdout string, exitCode int) *pnpm.Adapter {
 	t.Helper()
 	dir := t.TempDir()
 	outPath := filepath.Join(dir, "stdout")
@@ -28,14 +28,15 @@ func mockExec(t *testing.T, stdout string, exitCode int) {
 		t.Fatal(err)
 	}
 
-	restore := pnpm.SetExecCommand(func(ctx context.Context, name string, arg ...string) *exec.Cmd {
-		return exec.CommandContext(ctx, scriptPath)
-	})
-	t.Cleanup(func() { pnpm.SetExecCommand(restore) })
+	a := pnpm.New()
+	a.CommandContext = func(_ context.Context, _ string, _ ...string) *exec.Cmd {
+		return exec.CommandContext(context.Background(), scriptPath)
+	}
+	return a
 }
 
-// mockExecCheckArgs overrides pnpm's command factory and also checks the args.
-func mockExecCheckArgs(t *testing.T, stdout string, exitCode int, checkFn func(name string, args []string)) {
+// mkAdapterCheckArgs is like mkAdapter but also checks the passed command via checkFn.
+func mkAdapterCheckArgs(t *testing.T, stdout string, exitCode int, checkFn func(name string, args []string)) *pnpm.Adapter {
 	t.Helper()
 	dir := t.TempDir()
 	outPath := filepath.Join(dir, "stdout")
@@ -49,11 +50,12 @@ func mockExecCheckArgs(t *testing.T, stdout string, exitCode int, checkFn func(n
 		t.Fatal(err)
 	}
 
-	restore := pnpm.SetExecCommand(func(ctx context.Context, name string, arg ...string) *exec.Cmd {
+	a := pnpm.New()
+	a.CommandContext = func(_ context.Context, name string, arg ...string) *exec.Cmd {
 		checkFn(name, arg)
-		return exec.CommandContext(ctx, scriptPath)
-	})
-	t.Cleanup(func() { pnpm.SetExecCommand(restore) })
+		return exec.CommandContext(context.Background(), scriptPath)
+	}
+	return a
 }
 
 // ──────────────────────────────────────────────
@@ -65,14 +67,14 @@ func TestAdapterImplementsInterface(t *testing.T) {
 }
 
 func TestAdapterName(t *testing.T) {
-	a := &pnpm.Adapter{}
+	a := pnpm.New()
 	if a.Name() != "pnpm" {
 		t.Errorf("expected pnpm, got %s", a.Name())
 	}
 }
 
 func TestAdapterLocalPath(t *testing.T) {
-	a := &pnpm.Adapter{}
+	a := pnpm.New()
 	tests := []struct {
 		name string
 		want string
@@ -96,9 +98,8 @@ func TestAdapterLocalPath(t *testing.T) {
 func TestGetTree(t *testing.T) {
 	t.Run("successful parse", func(t *testing.T) {
 		output := `[{"name":"my-project","version":"1.0.0","dependencies":{"lodash":{"from":"lodash","version":"4.17.21","resolved":"https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz"}}}]`
-		mockExec(t, output, 0)
+		a := mkAdapter(t, output, 0)
 
-		a := &pnpm.Adapter{}
 		tree, err := a.GetTree(context.Background())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -120,9 +121,8 @@ func TestGetTree(t *testing.T) {
 
 	t.Run("nested dependencies", func(t *testing.T) {
 		output := `[{"name":"root","version":"1.0","dependencies":{"express":{"version":"4.18","dependencies":{"accepts":{"version":"1.3.8"}}}}}]`
-		mockExec(t, output, 0)
+		a := mkAdapter(t, output, 0)
 
-		a := &pnpm.Adapter{}
 		tree, err := a.GetTree(context.Background())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -141,9 +141,8 @@ func TestGetTree(t *testing.T) {
 	})
 
 	t.Run("empty array", func(t *testing.T) {
-		mockExec(t, `[]`, 0)
+		a := mkAdapter(t, `[]`, 0)
 
-		a := &pnpm.Adapter{}
 		tree, err := a.GetTree(context.Background())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -154,7 +153,7 @@ func TestGetTree(t *testing.T) {
 	})
 
 	t.Run("sends correct command", func(t *testing.T) {
-		mockExecCheckArgs(t, `[{"name":"t"}]`, 0,
+		a := mkAdapterCheckArgs(t, `[{"name":"t"}]`, 0,
 			func(name string, args []string) {
 				if name != "pnpm" {
 					t.Errorf("expected name=pnpm, got %s", name)
@@ -165,16 +164,14 @@ func TestGetTree(t *testing.T) {
 				}
 			})
 
-		a := &pnpm.Adapter{}
 		if _, err := a.GetTree(context.Background()); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
 	t.Run("pnpm exits non-zero returns partial data", func(t *testing.T) {
-		mockExec(t, `[{"name":"partial","version":"1.0"}]`, 1)
+		a := mkAdapter(t, `[{"name":"partial","version":"1.0"}]`, 1)
 
-		a := &pnpm.Adapter{}
 		tree, err := a.GetTree(context.Background())
 		if err != nil {
 			t.Fatalf("partial data should still be returned: %v", err)
@@ -185,9 +182,8 @@ func TestGetTree(t *testing.T) {
 	})
 
 	t.Run("invalid JSON from pnpm", func(t *testing.T) {
-		mockExec(t, `{not valid json`, 0)
+		a := mkAdapter(t, `{not valid json`, 0)
 
-		a := &pnpm.Adapter{}
 		_, err := a.GetTree(context.Background())
 		if err == nil {
 			t.Fatal("expected error for invalid JSON")
@@ -201,16 +197,15 @@ func TestGetTree(t *testing.T) {
 
 func TestInstall(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		mockExec(t, "", 0)
+		a := mkAdapter(t, "", 0)
 
-		a := &pnpm.Adapter{}
 		if err := a.Install(context.Background()); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
 	t.Run("sends correct command", func(t *testing.T) {
-		mockExecCheckArgs(t, "", 0,
+		a := mkAdapterCheckArgs(t, "", 0,
 			func(name string, args []string) {
 				if name != "pnpm" {
 					t.Errorf("expected name=pnpm, got %s", name)
@@ -220,14 +215,13 @@ func TestInstall(t *testing.T) {
 				}
 			})
 
-		a := &pnpm.Adapter{}
 		if err := a.Install(context.Background()); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
 	t.Run("passes extra args", func(t *testing.T) {
-		mockExecCheckArgs(t, "", 0,
+		a := mkAdapterCheckArgs(t, "", 0,
 			func(name string, args []string) {
 				got := strings.Join(args, " ")
 				if !strings.Contains(got, "lodash express") {
@@ -235,16 +229,14 @@ func TestInstall(t *testing.T) {
 				}
 			})
 
-		a := &pnpm.Adapter{}
 		if err := a.Install(context.Background(), "lodash", "express"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
 	t.Run("failure", func(t *testing.T) {
-		mockExec(t, "error message", 1)
+		a := mkAdapter(t, "error message", 1)
 
-		a := &pnpm.Adapter{}
 		err := a.Install(context.Background())
 		if err == nil {
 			t.Fatal("expected error")
@@ -269,12 +261,11 @@ func TestResolve(t *testing.T) {
 			}
 		}()
 
-		mockExec(t, "", 0)
+		a := mkAdapter(t, "", 0)
 		if err := os.WriteFile("pnpm-lock.yaml", []byte("lockfileVersion: '9.0'\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 
-		a := &pnpm.Adapter{}
 		if err := a.Resolve(context.Background()); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -292,7 +283,7 @@ func TestResolve(t *testing.T) {
 			}
 		}()
 
-		mockExecCheckArgs(t, "", 0,
+		a := mkAdapterCheckArgs(t, "", 0,
 			func(name string, args []string) {
 				if name != "pnpm" {
 					t.Errorf("expected name=pnpm, got %s", name)
@@ -307,7 +298,6 @@ func TestResolve(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		a := &pnpm.Adapter{}
 		if err := a.Resolve(context.Background()); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -325,9 +315,8 @@ func TestResolve(t *testing.T) {
 			}
 		}()
 
-		mockExec(t, "", 1)
+		a := mkAdapter(t, "", 1)
 
-		a := &pnpm.Adapter{}
 		err := a.Resolve(context.Background())
 		if err == nil {
 			t.Fatal("expected error")
@@ -346,9 +335,8 @@ func TestResolve(t *testing.T) {
 			}
 		}()
 
-		mockExec(t, "", 0)
+		a := mkAdapter(t, "", 0)
 
-		a := &pnpm.Adapter{}
 		err := a.Resolve(context.Background())
 		if err == nil {
 			t.Fatal("expected error when pnpm-lock.yaml missing")
@@ -390,7 +378,7 @@ packages:
 			t.Fatal(err)
 		}
 
-		a := &pnpm.Adapter{}
+		a := pnpm.New()
 		nodes, err := a.ParseLockfile(context.Background())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -449,7 +437,7 @@ packages:
 			t.Fatal(err)
 		}
 
-		a := &pnpm.Adapter{}
+		a := pnpm.New()
 		nodes, err := a.ParseLockfile(context.Background())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -477,7 +465,7 @@ packages:
 			}
 		}()
 
-		a := &pnpm.Adapter{}
+		a := pnpm.New()
 		_, err := a.ParseLockfile(context.Background())
 		if err == nil {
 			t.Fatal("expected error when pnpm-lock.yaml does not exist")
@@ -503,7 +491,7 @@ packages:
 			t.Fatal(err)
 		}
 
-		a := &pnpm.Adapter{}
+		a := pnpm.New()
 		nodes, err := a.ParseLockfile(context.Background())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -535,7 +523,7 @@ packages:
 			t.Fatal(err)
 		}
 
-		a := &pnpm.Adapter{}
+		a := pnpm.New()
 		nodes, err := a.ParseLockfile(context.Background())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -573,7 +561,7 @@ packages:
 			t.Fatal(err)
 		}
 
-		a := &pnpm.Adapter{}
+		a := pnpm.New()
 		nodes, err := a.ParseLockfile(context.Background())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -611,7 +599,7 @@ packages:
 			t.Fatal(err)
 		}
 
-		a := &pnpm.Adapter{}
+		a := pnpm.New()
 		nodes, err := a.ParseLockfile(context.Background())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -647,7 +635,7 @@ func TestParseLockfile_TabIndented(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		a := &pnpm.Adapter{}
+		a := pnpm.New()
 		nodes, err := a.ParseLockfile(context.Background())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -683,7 +671,7 @@ func TestParseLockfile_TabIndented(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		a := &pnpm.Adapter{}
+		a := pnpm.New()
 		nodes, err := a.ParseLockfile(context.Background())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -729,7 +717,7 @@ packages:
 			t.Fatal(err)
 		}
 
-		a := &pnpm.Adapter{}
+		a := pnpm.New()
 		nodes, err := a.ParseLockfile(context.Background())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -783,7 +771,7 @@ packages:
 			t.Fatal(err)
 		}
 
-		a := &pnpm.Adapter{}
+		a := pnpm.New()
 		nodes, err := a.ParseLockfile(context.Background())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -819,7 +807,7 @@ func TestParseLockfile_MalformedStructure(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		a := &pnpm.Adapter{}
+		a := pnpm.New()
 		_, err := a.ParseLockfile(context.Background())
 		if err == nil {
 			t.Fatal("expected error for unknown indent level (3 spaces), got nil")
@@ -843,7 +831,7 @@ func TestParseLockfile_MalformedStructure(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		a := &pnpm.Adapter{}
+		a := pnpm.New()
 		nodes, err := a.ParseLockfile(context.Background())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -851,8 +839,6 @@ func TestParseLockfile_MalformedStructure(t *testing.T) {
 		if len(nodes) != 1 {
 			t.Fatalf("expected 1 node, got %d", len(nodes))
 		}
-		// The orphan integrity sub-property should be silently skipped
-		// since it appeared outside a resolution block.
 		if nodes[0].Integrity != "" {
 			t.Errorf("expected empty integrity for orphan sub-property, got %s", nodes[0].Integrity)
 		}
@@ -875,7 +861,7 @@ func TestParseLockfile_MalformedStructure(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		a := &pnpm.Adapter{}
+		a := pnpm.New()
 		_, err := a.ParseLockfile(context.Background())
 		if err == nil {
 			t.Fatal("expected error for empty package key, got nil")
@@ -899,7 +885,7 @@ func TestParseLockfile_MalformedStructure(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		a := &pnpm.Adapter{}
+		a := pnpm.New()
 		_, err := a.ParseLockfile(context.Background())
 		if err == nil {
 			t.Fatal("expected error for double slash key, got nil")
@@ -923,7 +909,7 @@ func TestParseLockfile_MalformedStructure(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		a := &pnpm.Adapter{}
+		a := pnpm.New()
 		_, err := a.ParseLockfile(context.Background())
 		if err == nil {
 			t.Fatal("expected error for property outside package entry, got nil")
@@ -952,7 +938,7 @@ func TestParseLockfile_EmptyData(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		a := &pnpm.Adapter{}
+		a := pnpm.New()
 		nodes, err := a.ParseLockfile(context.Background())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
