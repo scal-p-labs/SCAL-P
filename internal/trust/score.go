@@ -245,10 +245,10 @@ func defaultFetchDownloads(ctx context.Context, apiURL, pkgName string) (int, er
 	if err != nil {
 		return 0, fmt.Errorf("connect: %w", err)
 	}
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck
 
 	if deadline, ok := ctx.Deadline(); ok {
-		conn.SetDeadline(deadline)
+		conn.SetDeadline(deadline) //nolint:errcheck
 	}
 
 	req := fmt.Sprintf("GET %s HTTP/1.1\r\nHost: %s\r\nAccept: application/json\r\nConnection: close\r\n\r\n", path, host)
