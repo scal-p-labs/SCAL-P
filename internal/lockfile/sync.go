@@ -16,7 +16,10 @@ import (
 
 // SyncWithTree updates the lockfile based on the dependency tree.
 func SyncWithTree(ctx context.Context, lf *Lockfile, tree pkgmanager.DependencyTree, pm pkgmanager.PackageManager) ([]audit.Event, error) {
-	nodes := pkgmanager.Flatten(tree)
+	nodes, err := pkgmanager.Flatten(tree)
+	if err != nil {
+		return nil, fmt.Errorf("flatten tree: %w", err)
+	}
 	events := make([]audit.Event, 0, len(nodes))
 	now := time.Now().UTC().Format(time.RFC3339)
 	seen := map[string]bool{}
@@ -67,7 +70,10 @@ func SyncWithTree(ctx context.Context, lf *Lockfile, tree pkgmanager.DependencyT
 
 // VerifyAgainstTree checks the lockfile against the dependency tree.
 func VerifyAgainstTree(ctx context.Context, lf *Lockfile, tree pkgmanager.DependencyTree, pm pkgmanager.PackageManager) ([]policy.Violation, []audit.Event, error) {
-	nodes := pkgmanager.Flatten(tree)
+	nodes, err := pkgmanager.Flatten(tree)
+	if err != nil {
+		return nil, nil, fmt.Errorf("flatten tree: %w", err)
+	}
 	events := make([]audit.Event, 0, len(nodes))
 	var violations []policy.Violation
 	now := time.Now().UTC().Format(time.RFC3339)

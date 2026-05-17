@@ -70,13 +70,17 @@ func runAudit(ctx context.Context, args []string) error {
 	}
 
 	if pol.Trust.MinScore > 0 || pol.Trust.RequireHash {
-		nodes := pkgmanager.Flatten(depTree)
-		scorer := trust.NewScorer(trust.DefaultCacheFile)
-		trustVs, tvErr := scorer.Evaluate(ctx, pol, nodes, &lf)
-		if tvErr != nil {
-			slog.Warn("trust score", "err", tvErr)
+		nodes, flattenErr := pkgmanager.Flatten(depTree)
+		if flattenErr != nil {
+			slog.Warn("flatten tree", "err", flattenErr)
 		} else {
-			violations = append(violations, trustVs...)
+			scorer := trust.NewScorer(trust.DefaultCacheFile)
+			trustVs, tvErr := scorer.Evaluate(ctx, pol, nodes, &lf)
+			if tvErr != nil {
+				slog.Warn("trust score", "err", tvErr)
+			} else {
+				violations = append(violations, trustVs...)
+			}
 		}
 	}
 

@@ -1,6 +1,10 @@
 package pkgmanager
 
-import "context"
+import (
+	"context"
+	"fmt"
+	"log/slog"
+)
 
 // PackageNode is a flattened dependency node.
 type PackageNode struct {
@@ -49,38 +53,62 @@ type PackageManager interface {
 	LocalPath(name string) string
 }
 
+// maxFlattenNodes is the maximum number of packages Flatten will return.
+// Real npm/pnpm projects can exceed 10K packages; this limit prevents
+// unbounded memory growth from malicious or enormous dependency trees.
+const maxFlattenNodes = 100000
+
+// flattenEntry is a BFS queue entry for Flatten.
+type flattenEntry struct {
+	deps  map[string]DependencyRef
+	depth int
+}
+
 // Flatten converts a dependency tree into a flat list of PackageNode.
 // The same name@version may appear multiple times (hoisted duplicates).
 // SyncWithTree handles this by overwriting lockfile entries.
-func Flatten(tree DependencyTree) []PackageNode {
+//
+// Returns an error if the tree exceeds maxFlattenNodes.
+func Flatten(tree DependencyTree) ([]PackageNode, error) {
 	if len(tree.Dependencies) == 0 {
-		return nil
+		return nil, nil
 	}
+
 	var nodes []PackageNode
-	visitDeps(tree.Dependencies, 0, &nodes, 0)
-	return nodes
-}
+	queue := []flattenEntry{{deps: tree.Dependencies}}
 
-const maxFlattenDepth = 10000
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
 
-func visitDeps(deps map[string]DependencyRef, depth int, nodes *[]PackageNode, guard int) {
-	if guard > maxFlattenDepth {
-		return
-	}
-	for name, ref := range deps {
-		guard++
-		*nodes = append(*nodes, PackageNode{
-			Name:      name,
-			Version:   ref.Version,
-			Resolved:  ref.Resolved,
-			Integrity: ref.Integrity,
-			Path:      ref.Path,
-			Depth:     depth,
-		})
-		if ref.Dependencies != nil {
-			visitDeps(ref.Dependencies, depth+1, nodes, guard)
+		for name, ref := range cur.deps {
+			if len(nodes) >= maxFlattenNodes {
+				slog.Warn("Flatten: dependency tree truncated",
+					"limit", maxFlattenNodes,
+					"nodes", len(nodes),
+				)
+				return nodes, fmt.Errorf("dependency tree exceeds %d nodes", maxFlattenNodes)
+			}
+
+			nodes = append(nodes, PackageNode{
+				Name:      name,
+				Version:   ref.Version,
+				Resolved:  ref.Resolved,
+				Integrity: ref.Integrity,
+				Path:      ref.Path,
+				Depth:     cur.depth,
+			})
+
+			if len(ref.Dependencies) > 0 {
+				queue = append(queue, flattenEntry{
+					deps:  ref.Dependencies,
+					depth: cur.depth + 1,
+				})
+			}
 		}
 	}
+
+	return nodes, nil
 }
 
 // IsSupported reports whether the package manager name is known.
