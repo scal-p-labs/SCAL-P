@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 
@@ -90,6 +91,9 @@ func GetDependencyTree(ctx context.Context) (pkgmanager.DependencyTree, error) {
 		if !errors.As(err, &exitErr) {
 			return pkgmanager.DependencyTree{}, fmt.Errorf("npm ls failed: %w", err)
 		}
+		slog.Warn("npm ls finished with non-zero exit — tree data may be incomplete",
+			"exitCode", exitErr.ExitCode(),
+		)
 	}
 	return tree, nil
 }

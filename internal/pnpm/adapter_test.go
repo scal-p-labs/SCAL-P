@@ -171,13 +171,16 @@ func TestGetTree(t *testing.T) {
 		}
 	})
 
-	t.Run("pnpm exits non-zero", func(t *testing.T) {
-		mockExec(t, "", 1)
+	t.Run("pnpm exits non-zero returns partial data", func(t *testing.T) {
+		mockExec(t, `[{"name":"partial","version":"1.0"}]`, 1)
 
 		a := &pnpm.Adapter{}
-		_, err := a.GetTree(context.Background())
-		if err == nil {
-			t.Fatal("expected error when pnpm fails")
+		tree, err := a.GetTree(context.Background())
+		if err != nil {
+			t.Fatalf("partial data should still be returned: %v", err)
+		}
+		if tree.Name != "partial" {
+			t.Errorf("expected name=partial, got %s", tree.Name)
 		}
 	})
 

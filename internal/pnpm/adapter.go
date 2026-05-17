@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
@@ -131,6 +132,9 @@ func (a *Adapter) getTreeViaLs(ctx context.Context) (pkgmanager.DependencyTree, 
 		if !errors.As(err, &exitErr) {
 			return pkgmanager.DependencyTree{}, fmt.Errorf("pnpm ls failed: %w", err)
 		}
+		slog.Warn("pnpm ls finished with non-zero exit — tree data may be incomplete",
+			"exitCode", exitErr.ExitCode(),
+		)
 	}
 
 	if len(entries) == 0 {

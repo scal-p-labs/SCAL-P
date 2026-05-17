@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -318,6 +319,7 @@ func (s *Scorer) fetchAuditCVEs(ctx context.Context) map[string][]string {
 	cmd.Stderr = os.Stderr
 	output, err := cmd.Output()
 	if err != nil {
+		slog.Debug("npm audit failed — CVE data unavailable", "err", err)
 		return nil
 	}
 

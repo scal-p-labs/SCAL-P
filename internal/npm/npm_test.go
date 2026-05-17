@@ -116,12 +116,15 @@ func TestGetDependencyTree(t *testing.T) {
 		}
 	})
 
-	t.Run("npm exits non-zero", func(t *testing.T) {
-		mockExec(t, "", 1)
+	t.Run("npm exits non-zero returns partial data", func(t *testing.T) {
+		mockExec(t, `{"name":"partial","version":"1.0"}`, 1)
 
-		_, err := npm.GetDependencyTree(context.Background())
-		if err == nil {
-			t.Fatal("expected error when npm fails")
+		tree, err := npm.GetDependencyTree(context.Background())
+		if err != nil {
+			t.Fatalf("partial data should still be returned: %v", err)
+		}
+		if tree.Name != "partial" {
+			t.Errorf("expected name=partial, got %s", tree.Name)
 		}
 	})
 
