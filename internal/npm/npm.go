@@ -89,6 +89,11 @@ func (a *Adapter) getDependencyTree(ctx context.Context) (pkgmanager.DependencyT
 	return tree, nil
 }
 
+// LocalPath returns the node_modules path for a package.
+func LocalPath(name string) string {
+	return "node_modules/" + name
+}
+
 func (a *Adapter) runInstall(ctx context.Context, args []string) error {
 	if err := ctxutil.Check(ctx); err != nil {
 		return err
