@@ -18,7 +18,7 @@ import (
 func runCi(ctx context.Context, args []string) error {
 	fs := newFlagSet("ci")
 	cfg := &cliConfig{}
-	fs.StringVar(&cfg.pm, "pm", "npm", "package manager: npm|pnpm")
+	fs.StringVar(&cfg.pm, "pm", "", "package manager (auto-detected from lockfile)")
 	fs.StringVar(&cfg.policyPath, "policy", ".scalp/policy.json", "policy path")
 	output := fs.String("output", ".scalp/ci-report.json", "report output path")
 	prContext := fs.String("pr-context", "fork", "PR context: fork (default) or internal")
