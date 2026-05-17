@@ -148,21 +148,23 @@ Offline-first: network failure = half points, not zero. `require_hash`: missing 
 
 ## Package managers
 
-npm (default) and pnpm supported. Select with `--pm`:
+npm and pnpm are auto-detected from the lockfile (`package-lock.json` / `pnpm-lock.yaml`). Most of the time you don't need `--pm`:
 
 ```bash
-scalp install --pm npm              # npm (default)
-scalp install --pm pnpm             # pnpm
-scalp ci --pm pnpm                  # CI with pnpm
-scalp audit --pm pnpm               # audit pnpm lockfile
+scalp install          # auto: npm or pnpm
+scalp audit            # auto: npm or pnpm
+scalp ci               # auto: npm or pnpm
 ```
 
-The PM flag must come before the subcommand's own arguments:
+Override with `--pm` when needed:
 
 ```bash
-scalp install --pm pnpm --guarded   # guarded install with pnpm
-scalp install --pm npm --guarded    # same with npm (explicit)
+scalp install --pm pnpm --guarded  # force pnpm
+scalp audit --pm npm               # force npm
+scalp ci --pm pnpm                 # CI with pnpm
 ```
+
+If both lockfiles are present (or none), `--pm` is required.
 
 ---
 

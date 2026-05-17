@@ -81,7 +81,7 @@ Commands:
   checksum      generate SHA-512 checksums for files
 
 Global flags:
-  --pm string       package manager: npm|pnpm (default "npm")
+  --pm string       package manager (auto-detected: npm|pnpm)
   --guarded         enforce policy and hash checks before install
   --policy string   policy path (default ".scalp/policy.json")
   --ci              set enforcement to block on violation
