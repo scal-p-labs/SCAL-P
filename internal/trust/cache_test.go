@@ -1,6 +1,7 @@
 package trust_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -136,6 +137,65 @@ func TestCache_saveWithoutChanges(t *testing.T) {
 	_, err = os.Stat(path)
 	if !os.IsNotExist(err) {
 		t.Errorf("expected file not created for clean cache save, got %v", err)
+	}
+}
+
+func TestCache_concurrentSaveAndSet(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "trust.json")
+
+	c, err := trust.LoadCache(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const N = 50
+	done := make(chan struct{}, 2)
+
+	// Writer goroutines: keep adding entries.
+	for i := range N {
+		go func(idx int) {
+			for j := 0; j < 10; j++ {
+				c.Set(
+					fmt.Sprintf("pkg-%d", idx),
+					trust.CacheEntry{WeeklyDownloads: idx * 100},
+				)
+			}
+			done <- struct{}{}
+		}(i)
+	}
+
+	// Save goroutine: repeatedly save while writes happen.
+	go func() {
+		for j := 0; j < 20; j++ {
+			_ = c.Save()
+		}
+		done <- struct{}{}
+	}()
+
+	// Wait for writers, then do one final save.
+	for range N {
+		<-done
+	}
+	<-done
+	if err := c.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Load and verify no entries lost.
+	c2, err := trust.LoadCache(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range N {
+		entry, ok := c2.Get(fmt.Sprintf("pkg-%d", i))
+		if !ok {
+			t.Errorf("pkg-%d missing after concurrent save", i)
+			continue
+		}
+		if entry.WeeklyDownloads != i*100 {
+			t.Errorf("pkg-%d: expected %d downloads, got %d", i, i*100, entry.WeeklyDownloads)
+		}
 	}
 }
 

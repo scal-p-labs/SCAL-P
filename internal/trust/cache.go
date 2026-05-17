@@ -120,16 +120,11 @@ func (c *TrustCache) SetDownloads(pkgName string, downloads int) {
 }
 
 func (c *TrustCache) Save() error {
-	c.mu.RLock()
-	if !c.dirty {
-		c.mu.RUnlock()
-		return nil
-	}
-	c.mu.RUnlock()
-
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
+	if !c.dirty {
+		return nil
+	}
 	data, err := json.Marshal(c.entries)
 	if err != nil {
 		return fmt.Errorf("marshal trust cache: %w", err)
