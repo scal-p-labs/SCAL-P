@@ -14,6 +14,41 @@ import (
 	"scal-p/internal/policy"
 )
 
+type binaryVerifyResult struct {
+	filename string
+	matched  bool
+	expected string
+	actual   string
+}
+
+// verifyArtifact hashes the artifact and compares against the checksums file.
+// It does not handle policy, audit logging, or enforcement — the caller is
+// responsible for those.
+func verifyArtifact(ctx context.Context, artifactPath, checksumsPath string) (binaryVerifyResult, error) {
+	checksums, err := parseChecksums(checksumsPath)
+	if err != nil {
+		return binaryVerifyResult{}, fmt.Errorf("parse checksums: %w", err)
+	}
+
+	filename := filepathBase(artifactPath)
+	expectedHash, ok := checksums[filename]
+	if !ok {
+		return binaryVerifyResult{}, fmt.Errorf("artifact %q not found in checksums file", filename)
+	}
+
+	actualHash, err := hash.File(ctx, artifactPath)
+	if err != nil {
+		return binaryVerifyResult{}, fmt.Errorf("hash artifact: %w", err)
+	}
+
+	return binaryVerifyResult{
+		filename: filename,
+		matched:  expectedHash == actualHash,
+		expected: expectedHash,
+		actual:   actualHash,
+	}, nil
+}
+
 func runVerify(ctx context.Context, args []string) error {
 	fs := newFlagSet("verify")
 	artifact := fs.String("artifact", "", "path to release artifact")
@@ -48,25 +83,13 @@ func runVerify(ctx context.Context, args []string) error {
 		}
 	}()
 
-	checksums, err := parseChecksums(*checksumsFile)
+	result, err := verifyArtifact(ctx, *artifact, *checksumsFile)
 	if err != nil {
-		return fmt.Errorf("parse checksums: %w", err)
+		return err
 	}
 
-	filename := filepathBase(*artifact)
-	expectedHash, ok := checksums[filename]
-	if !ok {
-		return fmt.Errorf("artifact %q not found in checksums file", filename)
-	}
-
-	actualHash, err := hash.File(ctx, *artifact)
-	if err != nil {
-		return fmt.Errorf("hash artifact: %w", err)
-	}
-
-	match := expectedHash == actualHash
 	status := "verified"
-	if !match {
+	if !result.matched {
 		status = "mismatch"
 	}
 
@@ -74,23 +97,23 @@ func runVerify(ctx context.Context, args []string) error {
 	ev := audit.Event{
 		Timestamp: now,
 		Event:     "binary_verify",
-		Package:   filename,
+		Package:   result.filename,
 		Status:    status,
-		HashMatch: match,
+		HashMatch: result.matched,
 	}
 
 	if err := auditLogger.Log(ctx, []audit.Event{ev}); err != nil {
 		return fmt.Errorf("log audit: %w", err)
 	}
 
-	if match {
-		slog.Info("binary verified", "artifact", filename, "hash", actualHash)
+	if result.matched {
+		slog.Info("binary verified", "artifact", result.filename, "hash", result.actual)
 		return nil
 	}
 
 	violations := []policy.Violation{{
-		PackageID: filename,
-		Reason:    fmt.Sprintf("hash_mismatch: expected %s, got %s", expectedHash, actualHash),
+		PackageID: result.filename,
+		Reason:    fmt.Sprintf("hash_mismatch: expected %s, got %s", result.expected, result.actual),
 		Rule:      "binary_verify",
 	}}
 

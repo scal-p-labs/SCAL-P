@@ -3,10 +3,13 @@ package cli
 import "cmp"
 
 type cliConfig struct {
-	policyPath string
-	pm         string
-	guarded    bool
-	ci         bool
+	policyPath   string
+	pm           string
+	guarded      bool
+	ci           bool
+	report       string
+	artifact     string
+	checksumFile string
 }
 
 func applyDefaults(cfg *cliConfig) {

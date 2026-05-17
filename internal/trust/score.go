@@ -47,6 +47,8 @@ type Scorer struct {
 	apiURL    string
 	auditFunc func(ctx context.Context) map[string][]string
 	workers   int
+	scores    []PackageScore
+	lastCVEs  map[string][]string
 }
 
 func NewScorer(cachePath string) *Scorer {
@@ -87,8 +89,10 @@ func (s *Scorer) Evaluate(ctx context.Context, pol policy.Policy, nodes []pkgman
 		return nil, fmt.Errorf("load trust cache: %w", err)
 	}
 
-	auditCVEs := s.fetchAuditCVEs(ctx)
+	s.lastCVEs = s.fetchAuditCVEs(ctx)
+	auditCVEs := s.lastCVEs
 	s.prefetchDownloads(ctx, nodes, cache)
+	s.scores = nil
 
 	var violations []policy.Violation
 	for _, node := range nodes {
@@ -104,6 +108,17 @@ func (s *Scorer) Evaluate(ctx context.Context, pol policy.Policy, nodes []pkgman
 		}
 
 		score := s.computeScore(ctx, node, lf, cache, auditCVEs)
+
+		s.scores = append(s.scores, PackageScore{
+			PackageID: key,
+			Total:     score.total,
+			Breakdown: ScoreBreakdown{
+				HashVerified: score.hash,
+				Maturity:     score.maturity,
+				Downloads:    score.downloads,
+				NoCVEs:       score.noCVEs,
+			},
+		})
 
 		if score.total < pol.Trust.MinScore {
 			violations = append(violations, policy.Violation{
@@ -347,6 +362,16 @@ func scoreCVEs(pkgName, version string, auditCVEs map[string][]string, cache *Tr
 	}
 
 	return ptsNoCVEs / 2
+}
+
+// Scores returns per-package score breakdowns from the last Evaluate call.
+func (s *Scorer) Scores() []PackageScore {
+	return s.scores
+}
+
+// CVEs returns the CVE data from the last Evaluate call.
+func (s *Scorer) CVEs() map[string][]string {
+	return s.lastCVEs
 }
 
 func (s *Scorer) fetchAuditCVEs(ctx context.Context) map[string][]string {

@@ -4,10 +4,12 @@
 > Zero external dependencies — only the Go standard library.
 
 ```bash
-scalp install --guarded    # resolve → evaluate → block → install → sync
-scalp audit                # verify lockfile hashes match node_modules
-scalp ci                   # single CI command: all of the above + JSON report
-scalp verify --artifact <file> --checksum <file>  # verify release artifact
+scalp install --guarded                            # resolve → evaluate → block → install → sync
+scalp audit                                         # verify lockfile hashes match node_modules
+scalp audit --report audit-report.md                # audit + Markdown report
+scalp audit --report - --artifact <f> --checksum <f> # audit + binary verify + stdout report
+scalp ci                                            # single CI command: all of the above + JSON report
+scalp verify --artifact <file> --checksum <file>     # verify release artifact
 ```
 
 ---
@@ -37,10 +39,39 @@ make build
 | `install --guarded` | Resolve lockfile, evaluate policy + trust scores, block if violations, install, hash-sync lockfile |
 | `install` | Passthrough install, then hash-sync lockfile |
 | `audit` | Verify `.scalp/lockfile.json` hashes match `node_modules` on disk |
+| `audit --report <path>` | Audit + generate Markdown report (use `--report -` for stdout) |
+| `audit --artifact <f> --checksum <f>` | Audit + optionally verify a binary artifact in the same run |
 | `ci` | Resolve → evaluate → block → install → audit → structured JSON report. Always blocks. |
 | `policy check` | Evaluate policy against resolved dependencies without installing |
 | `verify --artifact <file> --checksum <file>` | Verify release artifact SHA-512 against checksums file |
 | `checksum <files...>` | Generate SHA-512 checksums for files |
+
+### Audit report
+
+```bash
+scalp audit --report audit-report.md
+```
+
+Generates a human-readable Markdown report with:
+
+| Section | Contents |
+|---------|----------|
+| Header | Tool version, policy status, package manager, pass/fail |
+| Summary | Total packages, verified/mismatched/missing counts, trust violations, CVEs |
+| Hash Verification | Per-package status |
+| Trust Scores | Per-package breakdown (hash, maturity, downloads, CVEs) with verdict |
+| CVEs | Vulnerability table |
+| Binary Verification | Artifact hash comparison (when `--artifact` + `--checksum` given) |
+| Policy | Full policy JSON |
+| Violations | All violations with rule and reason |
+
+Flags:
+
+- `--report <path>` — output file path (`.md`). Use `--report -` for stdout.
+- `--artifact <file>` — optional binary artifact to verify alongside packages
+- `--checksum <file>` — checksums file for binary verification
+
+The report is designed to be auditable, versionable, easy to attach in CI, easy to review in PRs, and easy to sign/attest later. Format detection by extension — `.md` today, `.json`/`.adoc` ready to add.
 
 ### CI mode
 
@@ -145,7 +176,7 @@ internal/
 ├── lockfile/                  # .scalp/lockfile.json management + hash verification
 ├── hash/                      # SHA-512 hashing (directory + single file)
 ├── trust/                     # trust score engine, cache, npm API client
-├── reporter/                  # structured JSON report for CI
+├── reporter/                  # JSON + Markdown reports (CI, audit)
 ├── audit/                     # NDJSON audit logger
 ├── ctxutil/                   # context helpers
 ├── pkgmanager/                # PackageManager interface + registry
