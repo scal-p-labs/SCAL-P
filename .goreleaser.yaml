@@ -42,7 +42,26 @@ changelog:
   sort: asc
   filters:
     exclude:
-      - "^docs:"
-      - "^test:"
-      - "^chore:"
-      - "^ci:"
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - 'merge'
+      - '^ci:'
+      - '^e2e:'
+
+  groups:
+    - title: '⚠️ Breaking Changes'
+      regexp: '^.*!:.+'
+      order: 0
+
+    - title: '🚀 New Features'
+      regexp: '^feat(\(.+\))?!?:\s'
+      order: 1
+
+    - title: '🐛 Bug Fixes'
+      regexp: '^fix(\(.+\))?!?:\s'
+      order: 2
+
+    - title: '🧹 Refactoring'
+      regexp: '^refactor(\(.+\))?!?:\s'
+      order: 3
