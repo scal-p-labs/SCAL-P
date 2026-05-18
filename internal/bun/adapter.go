@@ -73,8 +73,6 @@ type bunPmEntry struct {
 	Dependencies map[string]bunPmEntry `json:"dependencies"`
 }
 
-type bunPmOutput []bunPmEntry
-
 func (a *Adapter) GetTree(ctx context.Context) (pkgmanager.DependencyTree, error) {
 	if err := ctxutil.Check(ctx); err != nil {
 		return pkgmanager.DependencyTree{}, err
@@ -102,6 +100,27 @@ func (a *Adapter) GetTree(ctx context.Context) (pkgmanager.DependencyTree, error
 	}, nil
 }
 
+func countTreeDepth(line string) int {
+	depth := 0
+	for _, r := range line {
+		if r == '│' {
+			depth++
+		}
+		if r == '├' || r == '└' {
+			break
+		}
+	}
+	// If the line starts with ├ or └ directly, depth is already 0
+	return depth
+}
+
+type flatPmEntry struct {
+	name    string
+	version string
+	depth   int
+	parent  int
+}
+
 func parsePmLsTree(output string) (rootName string, deps map[string]bunPmEntry) {
 	lines := strings.Split(strings.TrimSpace(output), "\n")
 	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
@@ -114,8 +133,10 @@ func parsePmLsTree(output string) (rootName string, deps map[string]bunPmEntry) 
 		rootName = filepath.Base(fields[0])
 	}
 
-	deps = make(map[string]bunPmEntry)
+	var flat []flatPmEntry
 	for _, line := range lines[1:] {
+		depth := countTreeDepth(line)
+
 		cleaned := strings.TrimLeft(line, " ├└│─")
 		cleaned = strings.TrimSpace(cleaned)
 		if cleaned == "" {
@@ -127,9 +148,43 @@ func parsePmLsTree(output string) (rootName string, deps map[string]bunPmEntry) 
 			continue
 		}
 
-		deps[name] = bunPmEntry{
-			Name:    name,
-			Version: version,
+		parent := -1
+		for i := len(flat) - 1; i >= 0; i-- {
+			if flat[i].depth == depth-1 {
+				parent = i
+				break
+			}
+		}
+
+		flat = append(flat, flatPmEntry{
+			name:    name,
+			version: version,
+			depth:   depth,
+			parent:  parent,
+		})
+	}
+
+	if len(flat) == 0 {
+		return rootName, nil
+	}
+
+	nodes := make([]bunPmEntry, len(flat))
+	for i, f := range flat {
+		nodes[i] = bunPmEntry{
+			Name:         f.name,
+			Version:      f.version,
+			Dependencies: make(map[string]bunPmEntry),
+		}
+	}
+
+	deps = make(map[string]bunPmEntry, len(flat))
+	for i := len(flat) - 1; i >= 0; i-- {
+		f := flat[i]
+		if f.parent == -1 {
+			deps[f.name] = nodes[i]
+		} else {
+			p := &nodes[f.parent]
+			p.Dependencies[f.name] = nodes[i]
 		}
 	}
 
