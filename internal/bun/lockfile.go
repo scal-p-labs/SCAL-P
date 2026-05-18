@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -34,6 +35,113 @@ type bunParserState struct {
 	inDeps  bool
 }
 
+func bunSplitNameVersion(s string) (name, version string) {
+	if strings.HasPrefix(s, "@") {
+		rest := s[1:]
+		if idx := strings.LastIndex(rest, "@"); idx > 0 {
+			return "@" + rest[:idx], rest[idx+1:]
+		}
+		return s, ""
+	}
+	if idx := strings.LastIndex(s, "@"); idx > 0 {
+		return s[:idx], s[idx+1:]
+	}
+	return s, ""
+}
+
+type bunLockJSONPackage [4]json.RawMessage
+
+type bunLockJSON struct {
+	LockfileVersion int                            `json:"lockfileVersion"`
+	Packages        map[string]bunLockJSONPackage  `json:"packages"`
+}
+
+func sanitizeBunJSON(data []byte) []byte {
+	var out bytes.Buffer
+	inString := false
+	escape := false
+
+	for i := 0; i < len(data); i++ {
+		b := data[i]
+
+		if escape {
+			escape = false
+			out.WriteByte(b)
+			continue
+		}
+
+		if b == '\\' && inString {
+			escape = true
+			out.WriteByte(b)
+			continue
+		}
+
+		if b == '"' {
+			inString = !inString
+			out.WriteByte(b)
+			continue
+		}
+
+		if !inString && b == ',' {
+			j := i + 1
+			for j < len(data) && (data[j] == ' ' || data[j] == '\t' || data[j] == '\n' || data[j] == '\r') {
+				j++
+			}
+			if j < len(data) && (data[j] == '}' || data[j] == ']') {
+				continue
+			}
+		}
+
+		out.WriteByte(b)
+	}
+
+	return out.Bytes()
+}
+
+func parseBunLockJSON(data []byte) ([]pkgmanager.PackageNode, error) {
+	cleaned := sanitizeBunJSON(data)
+
+	var hdr bunLockJSON
+	if err := json.Unmarshal(cleaned, &hdr); err != nil {
+		return nil, fmt.Errorf("parsing JSON bun.lock: %w", err)
+	}
+
+	var nodes []pkgmanager.PackageNode
+	for name, entry := range hdr.Packages {
+		if len(entry) < 1 {
+			continue
+		}
+
+		var nameVersion string
+		if err := json.Unmarshal(entry[0], &nameVersion); err != nil {
+			continue
+		}
+
+		_, version := bunSplitNameVersion(nameVersion)
+
+		var resolved string
+		if len(entry) > 1 && entry[1] != nil && string(entry[1]) != "null" {
+			json.Unmarshal(entry[1], &resolved)
+		}
+
+		var integrity string
+		if len(entry) > 3 && entry[3] != nil && string(entry[3]) != "null" {
+			json.Unmarshal(entry[3], &integrity)
+		}
+
+		nodes = append(nodes, pkgmanager.PackageNode{
+			Name:      name,
+			Version:   version,
+			Resolved:  resolved,
+			Integrity: integrity,
+			Path:      "node_modules/" + name,
+			Depth:     0,
+		})
+	}
+
+	return nodes, nil
+}
+
 func ParseBunLockfile(ctx context.Context) ([]pkgmanager.PackageNode, error) {
 	if err := ctxutil.Check(ctx); err != nil {
 		return nil, err
@@ -42,6 +150,15 @@ func ParseBunLockfile(ctx context.Context) ([]pkgmanager.PackageNode, error) {
 	data, err := os.ReadFile("bun.lock")
 	if err != nil {
 		return nil, fmt.Errorf("reading bun.lock: %w", err)
+	}
+
+	if len(data) == 0 {
+		return nil, nil
+	}
+
+	trimmed := bytes.TrimLeft(data, " \t\r\n")
+	if len(trimmed) > 0 && trimmed[0] == '{' {
+		return parseBunLockJSON(data)
 	}
 
 	return parseBunLockText(data)

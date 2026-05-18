@@ -8,7 +8,7 @@ import (
 )
 
 func TestE2E_Bun_InstallGuarded(t *testing.T) {
-	requireBunLegacyLockfile(t)
+	requireCommand(t, "bun")
 	dir := t.TempDir()
 	copyFixture(t, filepath.Join("..", "testdata", "bun", "simple"), dir)
 

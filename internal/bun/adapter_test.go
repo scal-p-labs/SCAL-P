@@ -98,7 +98,7 @@ func TestGetTree(t *testing.T) {
 			}
 		}()
 
-		a := mkAdapter(t, `[{"name":"my-project","version":"1.0.0","dependencies":{"lodash":{"version":"4.17.21"}}}]`, 0)
+		a := mkAdapter(t, "/root/my-project node_modules\n└── lodash@4.17.21\n", 0)
 		tree, err := a.GetTree(context.Background())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -498,6 +498,94 @@ lodash@4.17.21:
 		}
 		if _, ok := byName["lodash"]; !ok {
 			t.Error("missing lodash")
+		}
+	})
+
+	t.Run("JSON format (bun >= 1.1)", func(t *testing.T) {
+		dir := t.TempDir()
+		oldWd, _ := os.Getwd()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := os.Chdir(oldWd); err != nil {
+				t.Error(err)
+			}
+		}()
+
+		lockfile := `{
+  "lockfileVersion": 1,
+  "workspaces": {"": {"name": "test", "dependencies": {"lodash": "4.17.21"}}},
+  "packages": {
+    "lodash": ["lodash@4.17.21", "", {}, "sha512-test=="]
+  }
+}`
+		if err := os.WriteFile("bun.lock", []byte(lockfile), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		a := bun.New()
+		nodes, err := a.ParseLockfile(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(nodes) != 1 {
+			t.Fatalf("expected 1 node, got %d", len(nodes))
+		}
+		if nodes[0].Name != "lodash" {
+			t.Errorf("expected lodash, got %s", nodes[0].Name)
+		}
+		if nodes[0].Version != "4.17.21" {
+			t.Errorf("expected 4.17.21, got %s", nodes[0].Version)
+		}
+		if nodes[0].Integrity != "sha512-test==" {
+			t.Errorf("expected sha512-test==, got %s", nodes[0].Integrity)
+		}
+	})
+
+	t.Run("JSON with trailing commas (bun >= 1.3)", func(t *testing.T) {
+		dir := t.TempDir()
+		oldWd, _ := os.Getwd()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := os.Chdir(oldWd); err != nil {
+				t.Error(err)
+			}
+		}()
+
+		lockfile := `{
+  "lockfileVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "test",
+      "dependencies": {
+        "lodash": "4.17.21",
+      },
+    },
+  },
+  "packages": {
+    "lodash": ["lodash@4.17.21", "", {}, "sha512-v2kDEe57lecTulaDIuNTPy3Ry4gLGJ6Z1O3vE1krgXZNrsQ+LFTGHVxVjcXPs17LhbZVGedAJv8XZ1tvj5FvSg=="],
+  },
+}`
+		if err := os.WriteFile("bun.lock", []byte(lockfile), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		a := bun.New()
+		nodes, err := a.ParseLockfile(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(nodes) != 1 {
+			t.Fatalf("expected 1 node, got %d", len(nodes))
+		}
+		if nodes[0].Name != "lodash" {
+			t.Errorf("expected lodash, got %s", nodes[0].Name)
+		}
+		if nodes[0].Version != "4.17.21" {
+			t.Errorf("expected 4.17.21, got %s", nodes[0].Version)
 		}
 	})
 
