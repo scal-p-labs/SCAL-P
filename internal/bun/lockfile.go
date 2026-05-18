@@ -106,8 +106,8 @@ func parseBunLockJSON(data []byte) ([]pkgmanager.PackageNode, error) {
 		return nil, fmt.Errorf("parsing JSON bun.lock: %w", err)
 	}
 
-	var nodes []pkgmanager.PackageNode
-	for name, entry := range hdr.Packages {
+	nodes := make([]pkgmanager.PackageNode, 0, len(hdr.Packages))
+	for _, entry := range hdr.Packages {
 		if len(entry) < 1 {
 			continue
 		}
@@ -117,26 +117,33 @@ func parseBunLockJSON(data []byte) ([]pkgmanager.PackageNode, error) {
 			continue
 		}
 
-		_, version := bunSplitNameVersion(nameVersion)
+		pkgName, version := bunSplitNameVersion(nameVersion)
+		if pkgName == "" {
+			continue
+		}
 
 		var resolved string
 		if len(entry) > 1 && entry[1] != nil && string(entry[1]) != "null" {
-			json.Unmarshal(entry[1], &resolved)
+			_ = json.Unmarshal(entry[1], &resolved)
 		}
 
 		var integrity string
 		if len(entry) > 3 && entry[3] != nil && string(entry[3]) != "null" {
-			json.Unmarshal(entry[3], &integrity)
+			_ = json.Unmarshal(entry[3], &integrity)
 		}
 
 		nodes = append(nodes, pkgmanager.PackageNode{
-			Name:      name,
+			Name:      pkgName,
 			Version:   version,
 			Resolved:  resolved,
 			Integrity: integrity,
-			Path:      "node_modules/" + name,
+			Path:      "node_modules/" + pkgName,
 			Depth:     0,
 		})
+
+		if len(nodes) > maxBunEntries {
+			return nil, fmt.Errorf("too many packages (%d exceeds max %d)", len(nodes), maxBunEntries)
+		}
 	}
 
 	return nodes, nil
