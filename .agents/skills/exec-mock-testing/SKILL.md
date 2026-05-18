@@ -1,6 +1,6 @@
 ---
 name: exec-mock-testing
-description: Write tests that mock external commands (npm, pnpm) using the SetExecCommand pattern. Use when writing tests for internal/npm/, internal/pnpm/, or any code that calls exec.CommandContext.
+description: Write tests that mock external commands (npm, pnpm, yarn, bun) using the SetExecCommand pattern. Use when writing tests for internal/npm/, internal/pnpm/, internal/yarn/, internal/bun/, or any code that calls exec.CommandContext.
 ---
 
 ## The pattern

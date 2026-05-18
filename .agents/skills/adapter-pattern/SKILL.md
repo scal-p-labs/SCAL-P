@@ -23,7 +23,7 @@ type PackageManager interface {
 | Method | When called | What it should do |
 |--------|-------------|-------------------|
 | `Resolve` | Before policy evaluation | Run a lockfile-only install (no `node_modules`). Use `--ignore-scripts` to prevent lifecycle scripts. |
-| `ParseLockfile` | After Resolve, before Install | Read the lockfile (e.g., `package-lock.json`, `pnpm-lock.yaml`) and return all packages as a flat list. Must work **without** `node_modules` installed. |
+| `ParseLockfile` | After Resolve, before Install | Read the lockfile (e.g., `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`) and return all packages as a flat list. Must work **without** `node_modules` installed. |
 | `Install` | After policy passes | Run the actual install. Passthrough `os.Stdin`, `os.Stdout`, `os.Stderr`. |
 | `GetTree` | After Install | Return the full dependency tree. Used for hash sync and audit. |
 | `LocalPath` | Any time | Return the filesystem path for a package directory. Usually `"node_modules/" + name`. |
@@ -63,7 +63,8 @@ Any production code that runs external commands must use `execCommand`, not `exe
 ## Gotchas
 
 - `npm ls --all --json` exits 1 for peer dep warnings but still outputs valid JSON. Use `errors.As(err, &exitErr)` and check for empty stdout before failing.
-- `pnpm-lock.yaml` is YAML but we parse it with a custom line-by-line scanner (no external YAML dep). See `internal/pnpm/adapter.go`.
+- `pnpm-lock.yaml` and `yarn.lock` (Berry) are YAML-like but we parse them with a custom line-by-line scanner (no external YAML dep). See `internal/pnpm/adapter.go`, `internal/yarn/lockfile.go`.
+- `bun.lock` (Bun 1.1+ text format) also uses a custom line-by-line scanner. See `internal/bun/lockfile.go`.
 - Lockfile parsers must handle optional platform-specific packages (e.g., `lightningcss-android-arm64`). These are NOT installed on the current platform.
 - `ParseLockfile` is called PRE-install. It must work without `node_modules`.
 - `GetTree` is called POST-install. It can use `ls` commands that need `node_modules`.
