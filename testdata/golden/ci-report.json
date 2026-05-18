@@ -1,0 +1,9 @@
+{
+  "version": "0.2",
+  "passed": true,
+  "audit": {
+    "verified": 1,
+    "mismatched": 0,
+    "missing": 0
+  }
+}

@@ -22,10 +22,10 @@ test:
 	@echo "Running unit tests..."
 	go test -v ./...
 
-## e2e: run end-to-end tests (requires npm)
+## e2e: run end-to-end tests (requires npm/pnpm/yarn/bun)
 e2e:
 	@echo "Running end-to-end tests..."
-	go test -v -tags=e2e -count=1 ./cmd/scalp
+	go test -v -tags=e2e -count=1 ./e2e/
 
 ## release-test: test goreleaser snapshot + dogfooding
 release-test:

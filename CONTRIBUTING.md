@@ -198,7 +198,7 @@ Testing is split into two tiers.
   - Call `npm.SetExecCommand(mockFn)` in the test
   - Restore with `t.Cleanup(func() { npm.SetExecCommand(original) })`
 
-### End-to-end tests (`go test -tags=e2e ./cmd/scalp`)
+### End-to-end tests (`go test -tags=e2e ./...`)
 
 - Build and run the `scalp` binary in isolated temp directories.
 - Require `npm` to be installed.
@@ -207,7 +207,7 @@ Testing is split into two tiers.
 - Run with:
 
 ```bash
-go test -tags=e2e -count=1 -timeout=120s ./cmd/scalp
+go test -tags=e2e -count=1 -timeout=120s ./e2e/
 ```
 
 ### Coverage expectations

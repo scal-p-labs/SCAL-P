@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "trust": { "mode": "audit-only" },
+  "packages": { "deny": [{ "name": "is-odd" }] },
+  "enforcement": { "on_violation": "warn", "default_mode": "guarded" }
+}

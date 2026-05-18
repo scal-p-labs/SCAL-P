@@ -1,0 +1,14 @@
+lockfileVersion: '9.0'
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+importers:
+  .:
+    dependencies:
+      is-odd:
+        specifier: 3.0.1
+        version: 3.0.1
+packages:
+  /is-odd/3.0.1:
+    resolution: {integrity: sha512-9iEO4qS3oGdE7S9C1rf1XhBfFOrpZTYGy4m1b86N5yI4giR1cOIsfbXkG8N4qLGnZgsMziPD8kDS2YwN7HbQA==}
+    dev: false

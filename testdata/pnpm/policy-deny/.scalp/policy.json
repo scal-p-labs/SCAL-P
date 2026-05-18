@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "trust": { "mode": "denylist" },
+  "packages": { "deny": [{ "name": "is-odd" }] },
+  "enforcement": { "on_violation": "block", "default_mode": "guarded" }
+}
