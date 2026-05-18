@@ -55,8 +55,8 @@ func (a *Adapter) resolveOnly(ctx context.Context, args ...string) error {
 }
 
 type yarnListEntry struct {
-	Value        string                    `json:"value"`
-	Children     map[string]yarnListEntry  `json:"children"`
+	Value    string                   `json:"value"`
+	Children map[string]yarnListEntry `json:"children"`
 }
 
 type yarnLsOutput struct {

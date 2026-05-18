@@ -74,11 +74,11 @@ func hasLockfile() bool {
 }
 
 type bunPmEntry struct {
-	Name         string                  `json:"name"`
-	Version      string                  `json:"version"`
-	Resolved     string                  `json:"resolved"`
-	Integrity    string                  `json:"integrity"`
-	Dependencies map[string]bunPmEntry  `json:"dependencies"`
+	Name         string                `json:"name"`
+	Version      string                `json:"version"`
+	Resolved     string                `json:"resolved"`
+	Integrity    string                `json:"integrity"`
+	Dependencies map[string]bunPmEntry `json:"dependencies"`
 }
 
 type bunPmOutput []bunPmEntry
