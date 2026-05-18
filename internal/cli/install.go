@@ -23,7 +23,7 @@ func runInstall(ctx context.Context, args []string) error {
 	fs.BoolVar(&cfg.guarded, "guarded", false, "enforce policy and hash checks before install")
 	fs.BoolVar(&cfg.ci, "ci", false, "set enforcement to block on violation")
 
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlagSet(fs, args); err != nil {
 		return err
 	}
 	applyDefaults(cfg)

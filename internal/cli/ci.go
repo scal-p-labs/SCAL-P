@@ -24,7 +24,7 @@ func runCi(ctx context.Context, args []string) error {
 	prContext := fs.String("pr-context", "fork", "PR context: fork (default) or internal")
 	allowScripts := fs.Bool("allow-scripts", false, "allow install scripts to run (internal only)")
 
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlagSet(fs, args); err != nil {
 		return err
 	}
 	applyDefaults(cfg)

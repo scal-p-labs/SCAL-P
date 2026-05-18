@@ -19,6 +19,8 @@ import (
 	"scal-p/internal/yarn"
 )
 
+var errHelpRequested = errors.New("help requested")
+
 func init() {
 	npm.Register()
 	pnpm.Register()
@@ -37,27 +39,33 @@ func RunContext(ctx context.Context, args []string) error {
 		return usageError()
 	}
 
+	var err error
 	switch args[0] {
 	case "version", "-v", "--version":
 		slog.Info("version", "version", version.Version, "commit", version.Commit, "date", version.Date)
 		return nil
 	case "install":
-		return runInstall(ctx, args[1:])
+		err = runInstall(ctx, args[1:])
 	case "audit":
-		return runAudit(ctx, args[1:])
+		err = runAudit(ctx, args[1:])
 	case "ci":
-		return runCi(ctx, args[1:])
+		err = runCi(ctx, args[1:])
 	case "verify":
-		return runVerify(ctx, args[1:])
+		err = runVerify(ctx, args[1:])
 	case "checksum":
-		return runChecksum(ctx, args[1:])
+		err = runChecksum(ctx, args[1:])
 	case "policy":
-		return runPolicy(ctx, args[1:])
+		err = runPolicy(ctx, args[1:])
 	case "help", "-h", "--help":
 		return usageError()
 	default:
 		return fmt.Errorf("unknown command: %s\n%s", args[0], usageText())
 	}
+
+	if errors.Is(err, errHelpRequested) {
+		return nil
+	}
+	return err
 }
 
 func usageError() error {
@@ -125,6 +133,16 @@ func newFlagSet(name string) *flag.FlagSet {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	return fs
+}
+
+func parseFlagSet(fs *flag.FlagSet, args []string) error {
+	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return errHelpRequested
+		}
+		return err
+	}
+	return nil
 }
 
 func filterGlobalFlags(args []string) []string {

@@ -56,7 +56,7 @@ func runVerify(ctx context.Context, args []string) error {
 	policyPath := fs.String("policy", ".scalp/policy.json", "policy path")
 	ci := fs.Bool("ci", false, "set enforcement to block on violation")
 
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlagSet(fs, args); err != nil {
 		return err
 	}
 

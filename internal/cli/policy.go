@@ -31,7 +31,7 @@ func runPolicyCheck(ctx context.Context, args []string) error {
 	fs.StringVar(&cfg.policyPath, "policy", ".scalp/policy.json", "policy path")
 	fs.BoolVar(&cfg.ci, "ci", false, "set enforcement to block on violation")
 
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlagSet(fs, args); err != nil {
 		return err
 	}
 	applyDefaults(cfg)

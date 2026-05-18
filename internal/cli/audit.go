@@ -27,7 +27,7 @@ func runAudit(ctx context.Context, args []string) error {
 	fs.StringVar(&cfg.artifact, "artifact", "", "binary artifact to verify (optional)")
 	fs.StringVar(&cfg.checksumFile, "checksum", "", "checksums file for binary verification")
 
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlagSet(fs, args); err != nil {
 		return err
 	}
 	applyDefaults(cfg)

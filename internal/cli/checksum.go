@@ -13,7 +13,7 @@ func runChecksum(ctx context.Context, args []string) error {
 	fs := newFlagSet("checksum")
 	output := fs.String("output", "", "write output to file instead of stdout")
 
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlagSet(fs, args); err != nil {
 		return err
 	}
 
