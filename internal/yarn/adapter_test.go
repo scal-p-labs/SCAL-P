@@ -98,7 +98,7 @@ func TestGetTree(t *testing.T) {
 			}
 		}()
 
-		a := mkAdapter(t, `{"children":{"lodash":{"value":"lodash@npm:4.17.21"}}}`, 0)
+		a := mkAdapter(t, `{"value":"root@0.0.0","children":{"lodash@npm:4.17.21":{"value":"lodash@npm:4.17.21","children":{}}}}`, 0)
 		tree, err := a.GetTree(context.Background())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -258,8 +258,8 @@ func TestResolve(t *testing.T) {
 					t.Errorf("expected name=yarn, got %s", name)
 				}
 				got := strings.Join(args, " ")
-				if !strings.Contains(got, "install --mode=skip-build") {
-					t.Errorf("expected --mode=skip-build, got %s", got)
+				if !strings.Contains(got, "install --mode=skip-build --immutable") {
+					t.Errorf("expected --mode=skip-build --immutable, got %s", got)
 				}
 			})
 		if err := os.WriteFile("yarn.lock", []byte(""), 0o644); err != nil {

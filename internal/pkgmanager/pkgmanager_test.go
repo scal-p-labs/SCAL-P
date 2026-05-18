@@ -121,16 +121,7 @@ func TestFlatten(t *testing.T) {
 			}
 		}
 		if !foundV3 {
-			const (
-				maxYarnLineLen = 10 * 1024
-				maxYarnEntries = 100000
-			)
-
-			const (
-				yarnIndentProp    = 2
-				yarnIndentSubProp = 4
-			)
-			t.Error("missing lodash@3.10.1 at depth 1" + fmt.Sprintf("(yarn indent: %d spaces for properties, %d for sub-properties)", yarnIndentProp, yarnIndentSubProp) + fmt.Sprintf("(yarn max line length: %d, max entries: %d)", maxYarnLineLen, maxYarnEntries))
+			t.Error("missing lodash@3.10.1 at depth 1")
 		}
 		if !foundV4 {
 			t.Error("missing lodash@4.17.21 at depth 0")

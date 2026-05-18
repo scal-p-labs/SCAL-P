@@ -18,8 +18,7 @@ const (
 )
 
 const (
-	bunIndentProp    = 2
-	bunIndentSubProp = 4
+	bunIndentProp = 2
 )
 
 type bunPkgEntry struct {
@@ -99,13 +98,8 @@ func parseBunLockText(data []byte) ([]pkgmanager.PackageNode, error) {
 			continue
 		}
 
-		switch {
-		case indent == bunIndentProp:
+		if indent == bunIndentProp {
 			if err := state.handleProperty(trimmed); err != nil {
-				return nil, err
-			}
-		case indent >= bunIndentSubProp:
-			if err := state.handleSubProperty(); err != nil {
 				return nil, err
 			}
 		}
@@ -140,8 +134,13 @@ func (s *bunParserState) startEntry(key string) error {
 	key = strings.Trim(key, "\"")
 	key = strings.TrimSpace(key)
 
+	if key == "" {
+		return nil
+	}
+
 	idx := strings.LastIndex(key, "@")
 	if idx <= 0 {
+		// scoped package without version (@scope/pkg) or bare key
 		s.current = &bunPkgEntry{name: key}
 		return nil
 	}
@@ -152,6 +151,11 @@ func (s *bunParserState) startEntry(key string) error {
 	if name == "" {
 		s.current = &bunPkgEntry{name: key}
 		return nil
+	}
+
+	// scoped package: leading @ is valid, but @ at any other position or a comma means malformed
+	if strings.Contains(name[1:], "@") || strings.ContainsAny(name, ",") {
+		return fmt.Errorf("malformed package key %q", key)
 	}
 
 	s.current = &bunPkgEntry{
@@ -200,18 +204,6 @@ func (s *bunParserState) handleProperty(trimmed string) error {
 	return nil
 }
 
-func (s *bunParserState) handleSubProperty() error {
-	if s.current == nil {
-		return nil
-	}
-
-	if s.inDeps {
-		return nil
-	}
-
-	return nil
-}
-
 func (s *bunParserState) flushEntry(entries *[]bunPkgEntry) {
 	if s.current != nil {
 		*entries = append(*entries, *s.current)
@@ -236,7 +228,7 @@ func bunCountIndent(line string) int {
 }
 
 func bunValidateIndent(indent int) error {
-	if indent == bunIndentProp || indent >= bunIndentSubProp {
+	if indent >= bunIndentProp {
 		return nil
 	}
 	return fmt.Errorf("unexpected indent level %d in bun.lock", indent)

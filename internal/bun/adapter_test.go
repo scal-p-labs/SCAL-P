@@ -261,7 +261,7 @@ func TestResolve(t *testing.T) {
 		}
 	})
 
-	t.Run("falls back to install on failure", func(t *testing.T) {
+	t.Run("fails when frozen install errors", func(t *testing.T) {
 		dir := t.TempDir()
 		oldWd, _ := os.Getwd()
 		if err := os.Chdir(dir); err != nil {
@@ -273,13 +273,9 @@ func TestResolve(t *testing.T) {
 			}
 		}()
 
-		a := mkAdapter(t, "", 0)
-		if err := os.WriteFile("bun.lock", []byte(""), 0o644); err != nil {
-			t.Fatal(err)
-		}
-
-		if err := a.Resolve(context.Background()); err != nil {
-			t.Fatalf("unexpected error: %v", err)
+		a := mkAdapter(t, "", 1)
+		if err := a.Resolve(context.Background()); err == nil {
+			t.Fatal("expected error when frozen install fails")
 		}
 	})
 }
