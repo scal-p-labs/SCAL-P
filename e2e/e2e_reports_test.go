@@ -32,8 +32,11 @@ func TestE2E_CIReport_Golden(t *testing.T) {
 	dir := t.TempDir()
 	copyFixture(t, filepath.Join("..", "testdata", "npm", "simple"), dir)
 
+	result := runScalp(t, dir, "install", "--pm", "npm")
+	requireExitCode(t, result.exitCode, 0, result.String())
+
 	reportPath := filepath.Join(dir, "ci-report.json")
-	result := runScalp(t, dir, "ci", "--pm", "npm", "--output", reportPath)
+	result = runScalp(t, dir, "ci", "--pm", "npm", "--output", reportPath, "--pr-context", "internal")
 	requireExitCode(t, result.exitCode, 0, result.String())
 
 	got := normalizeOutput(readFile(t, reportPath))

@@ -17,6 +17,11 @@ func TestE2E_Yarn_InstallGuarded(t *testing.T) {
 	if !hasNodeModules(dir) {
 		t.Fatal("node_modules should exist after install")
 	}
+	lf := readLockfile(t, dir)
+	if lf == nil {
+		t.Fatal("lockfile should exist after install")
+	}
+	assertLockfileHasPackage(t, lf, "lodash")
 }
 
 func TestE2E_Yarn_LockfileInvalid(t *testing.T) {

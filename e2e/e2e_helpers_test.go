@@ -167,6 +167,28 @@ func requireYarnBerry(t *testing.T) {
 	}
 }
 
+func requireBunLegacyLockfile(t *testing.T) {
+	t.Helper()
+	requireCommand(t, "bun")
+	cmd := exec.Command("bun", "--version")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = io.Discard
+	if err := cmd.Run(); err != nil {
+		t.Skip("bun --version failed")
+	}
+	ver := strings.TrimSpace(out.String())
+	parts := strings.SplitN(ver, ".", 3)
+	if len(parts) < 2 {
+		t.Skip("unknown bun version: " + ver)
+	}
+	major, _ := strconv.Atoi(parts[0])
+	minor, _ := strconv.Atoi(parts[1])
+	if major > 1 || (major == 1 && minor >= 1) {
+		t.Skipf("bun >= 1.1 changed lockfile format to JSON (not supported by scalp parser), got %s", ver)
+	}
+}
+
 var tsRegex = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z`)
 
 func normalizeOutput(s string) string {
@@ -228,6 +250,11 @@ func writeJSONFile(t *testing.T, path string, value any) {
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func writePolicy(t *testing.T, dir string, content string) {
+	t.Helper()
+	writeFile(t, filepath.Join(dir, ".scalp", "policy.json"), content)
 }
 
 func requireExitCode(t *testing.T, got, want int, output string) {

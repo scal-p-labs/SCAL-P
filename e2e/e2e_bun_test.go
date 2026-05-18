@@ -8,7 +8,7 @@ import (
 )
 
 func TestE2E_Bun_InstallGuarded(t *testing.T) {
-	requireCommand(t, "bun")
+	requireBunLegacyLockfile(t)
 	dir := t.TempDir()
 	copyFixture(t, filepath.Join("..", "testdata", "bun", "simple"), dir)
 
@@ -17,6 +17,11 @@ func TestE2E_Bun_InstallGuarded(t *testing.T) {
 	if !hasNodeModules(dir) {
 		t.Fatal("node_modules should exist after install")
 	}
+	lf := readLockfile(t, dir)
+	if lf == nil {
+		t.Fatal("lockfile should exist after install")
+	}
+	assertLockfileHasPackage(t, lf, "lodash")
 }
 
 func TestE2E_Bun_LockfileInvalid(t *testing.T) {

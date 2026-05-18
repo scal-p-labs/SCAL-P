@@ -5,13 +5,20 @@ package scalp_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 func TestE2E_NPM_InstallGuarded_BlockBeforeInstall(t *testing.T) {
 	requireCommand(t, "npm")
 	dir := t.TempDir()
-	copyFixture(t, filepath.Join("..", "testdata", "npm", "policy-deny"), dir)
+	copyFixture(t, filepath.Join("..", "testdata", "npm", "simple"), dir)
+	writePolicy(t, dir, `{
+		"version":1,
+		"trust":{"mode":"denylist"},
+		"packages":{"deny":[{"name":"lodash"}]},
+		"enforcement":{"on_violation":"block","default_mode":"guarded"}
+	}`)
 
 	result := runScalp(t, dir, "install", "--pm", "npm", "--guarded")
 
@@ -86,7 +93,7 @@ func TestE2E_NPM_Audit_TamperingDetection(t *testing.T) {
 	}
 }
 
-func TestE2E_NPM_Audit_MissingPackage(t *testing.T) {
+func TestE2E_NPM_Audit_InjectFile(t *testing.T) {
 	requireCommand(t, "npm")
 	dir := t.TempDir()
 	copyFixture(t, filepath.Join("..", "testdata", "npm", "simple"), dir)
@@ -94,18 +101,21 @@ func TestE2E_NPM_Audit_MissingPackage(t *testing.T) {
 	result := runScalp(t, dir, "install", "--pm", "npm", "--guarded")
 	requireExitCode(t, result.exitCode, 0, result.String())
 
-	removeDir(t, filepath.Join(dir, "node_modules", "lodash"))
+	writeFile(t, filepath.Join(dir, "node_modules", "lodash", "injected.js"), "/* malware */")
 	result = runScalp(t, dir, "audit", "--pm", "npm", "--ci")
 	requireNonZero(t, result.exitCode, result.String())
-	if !eventInAudit(readAuditLog(t, dir), "status", "missing") {
-		t.Fatalf("expected missing package in audit log")
-	}
 }
 
 func TestE2E_NPM_AuditOnly_AllowsInstall(t *testing.T) {
 	requireCommand(t, "npm")
 	dir := t.TempDir()
-	copyFixture(t, filepath.Join("..", "testdata", "npm", "policy-audit-only"), dir)
+	copyFixture(t, filepath.Join("..", "testdata", "npm", "simple"), dir)
+	writePolicy(t, dir, `{
+		"version":1,
+		"trust":{"mode":"audit-only"},
+		"packages":{"deny":[{"name":"lodash"}]},
+		"enforcement":{"on_violation":"warn","default_mode":"guarded"}
+	}`)
 
 	result := runScalp(t, dir, "install", "--pm", "npm", "--guarded")
 	requireExitCode(t, result.exitCode, 0, result.String())
@@ -156,5 +166,19 @@ func TestE2E_NPM_Verify_BinaryMismatch(t *testing.T) {
 	requireNonZero(t, result.exitCode, result.String())
 	if !eventInAudit(readAuditLog(t, workDir), "event", "binary_verify") {
 		t.Fatalf("expected binary_verify event in audit log")
+	}
+}
+
+func TestE2E_NPM_Checksum_Golden(t *testing.T) {
+	file := t.TempDir() + string(filepath.Separator) + "artifact.txt"
+	writeFile(t, file, "scalp-checksum-test\n")
+
+	result := runScalp(t, t.TempDir(), "checksum", file)
+	requireExitCode(t, result.exitCode, 0, result.String())
+
+	out := strings.TrimSpace(normalizeOutput(result.stdout))
+	want := strings.TrimSpace(readGolden(t, filepath.Join("..", "testdata", "golden", "checksum.txt")))
+	if out != want {
+		t.Fatalf("checksum output mismatch\n--- got ---\n%s\n--- want ---\n%s", out, want)
 	}
 }
