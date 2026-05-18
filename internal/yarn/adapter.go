@@ -56,7 +56,7 @@ func (a *Adapter) resolveOnly(ctx context.Context, args ...string) error {
 }
 
 type yarnInfoEntry struct {
-	Value    string                    `json:"value"`
+	Value    string                   `json:"value"`
 	Children map[string]yarnInfoEntry `json:"children"`
 }
 

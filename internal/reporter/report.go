@@ -23,21 +23,21 @@ type BinaryVerifyResult struct {
 // AuditData contains all information gathered during an audit run, used by
 // renderers to produce reports in various formats (Markdown, JSON, etc.).
 type AuditData struct {
-	Timestamp     string                `json:"timestamp"`
-	Version       string                `json:"version"`
-	Commit        string                `json:"commit"`
-	PolicyPath    string                `json:"policy_path"`
-	PolicyLoaded  bool                  `json:"policy_loaded"`
-	PolicyJSON    string                `json:"policy_json,omitempty"`
-	PM            string                `json:"pm"`
-	Status        string                `json:"status"` // "passed" | "failed"
-	TotalPackages int                   `json:"total_packages"`
-	Events        []audit.Event         `json:"events,omitempty"`
-	Violations    []policy.Violation    `json:"violations,omitempty"`
-	TrustScores   []trust.PackageScore  `json:"trust_scores,omitempty"`
-	CVEs          map[string][]string   `json:"cves,omitempty"`
-	BinaryResults []BinaryVerifyResult  `json:"binary_results,omitempty"`
-	Enforcement   string                `json:"enforcement,omitempty"`
+	Timestamp     string               `json:"timestamp"`
+	Version       string               `json:"version"`
+	Commit        string               `json:"commit"`
+	PolicyPath    string               `json:"policy_path"`
+	PolicyLoaded  bool                 `json:"policy_loaded"`
+	PolicyJSON    string               `json:"policy_json,omitempty"`
+	PM            string               `json:"pm"`
+	Status        string               `json:"status"` // "passed" | "failed"
+	TotalPackages int                  `json:"total_packages"`
+	Events        []audit.Event        `json:"events,omitempty"`
+	Violations    []policy.Violation   `json:"violations,omitempty"`
+	TrustScores   []trust.PackageScore `json:"trust_scores,omitempty"`
+	CVEs          map[string][]string  `json:"cves,omitempty"`
+	BinaryResults []BinaryVerifyResult `json:"binary_results,omitempty"`
+	Enforcement   string               `json:"enforcement,omitempty"`
 }
 
 // WriteAuditReport detects the report format from the file extension and
