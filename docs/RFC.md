@@ -11,7 +11,7 @@
 
 ## What is SCAL-P?
 
-SCAL-P is a security layer that sits on top of npm (and eventually yarn/pnpm). It does **not** replace your package manager — it wraps it, checks things, and optionally blocks things.
+SCAL-P is a security layer that sits on top of npm, pnpm, yarn, and bun. It does **not** replace your package manager — it wraps it, checks things, and optionally blocks things.
 
 The core idea: make every dependency auditable, traceable, and controllable by policy. No implicit trust.
 

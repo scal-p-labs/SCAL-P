@@ -123,5 +123,8 @@ my-project/
 │   └── audit.log            ← every event, append-only
 ├── node_modules/
 ├── package.json
-└── package-lock.json
+├── package-lock.json    (npm)
+├── pnpm-lock.yaml       (pnpm)
+├── yarn.lock            (yarn)
+└── bun.lock             (bun)
 ```
