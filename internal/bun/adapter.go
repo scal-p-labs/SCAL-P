@@ -2,12 +2,14 @@ package bun
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 
 	"scal-p/internal/ctxutil"
 	"scal-p/internal/pkgmanager"
@@ -100,8 +102,42 @@ func (a *Adapter) GetTree(ctx context.Context) (pkgmanager.DependencyTree, error
 	}, nil
 }
 
+func parsePmLsTree(output string) (rootName string, deps map[string]bunPmEntry) {
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
+		return "", nil
+	}
+
+	rootLine := strings.TrimSpace(lines[0])
+	rootName = "bun-project"
+	if fields := strings.Fields(rootLine); len(fields) > 0 {
+		rootName = filepath.Base(fields[0])
+	}
+
+	deps = make(map[string]bunPmEntry)
+	for _, line := range lines[1:] {
+		cleaned := strings.TrimLeft(line, " ├└│─")
+		cleaned = strings.TrimSpace(cleaned)
+		if cleaned == "" {
+			continue
+		}
+
+		name, version := bunSplitNameVersion(cleaned)
+		if name == "" || version == "" {
+			continue
+		}
+
+		deps[name] = bunPmEntry{
+			Name:    name,
+			Version: version,
+		}
+	}
+
+	return rootName, deps
+}
+
 func (a *Adapter) getTreeViaPm(ctx context.Context) (pkgmanager.DependencyTree, error) {
-	cmd := a.CommandContext(ctx, "bun", "pm", "ls", "--all", "--json")
+	cmd := a.CommandContext(ctx, "bun", "pm", "ls", "--all")
 	cmd.Stderr = os.Stderr
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -111,9 +147,9 @@ func (a *Adapter) getTreeViaPm(ctx context.Context) (pkgmanager.DependencyTree, 
 		return pkgmanager.DependencyTree{}, fmt.Errorf("bun pm ls start: %w", err)
 	}
 
-	var output bunPmOutput
-	if err := json.NewDecoder(stdout).Decode(&output); err != nil {
-		return pkgmanager.DependencyTree{}, fmt.Errorf("invalid bun pm ls output: %w", err)
+	output, err := io.ReadAll(stdout)
+	if err != nil {
+		return pkgmanager.DependencyTree{}, fmt.Errorf("reading bun pm ls output: %w", err)
 	}
 
 	if err := cmd.Wait(); err != nil {
@@ -126,15 +162,15 @@ func (a *Adapter) getTreeViaPm(ctx context.Context) (pkgmanager.DependencyTree, 
 		)
 	}
 
-	if len(output) == 0 {
+	rootName, deps := parsePmLsTree(string(output))
+	if rootName == "" {
 		return pkgmanager.DependencyTree{}, nil
 	}
 
-	root := output[0]
 	return pkgmanager.DependencyTree{
-		Name:         root.Name,
-		Version:      root.Version,
-		Dependencies: convertBunDeps(root.Dependencies),
+		Name:         rootName,
+		Version:      "0.0",
+		Dependencies: convertBunDeps(deps),
 	}, nil
 }
 
