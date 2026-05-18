@@ -20,7 +20,8 @@ func Detect() (string, error) {
 	hasNPM := fileExists(npmLockfile)
 	hasPNPM := fileExists(pnpmLockfile)
 	hasYarn := fileExists(yarnLockfile)
-	hasBun := fileExists(bunLockfile) || fileExists(bunLockfileBin)
+	hasBunTxt := fileExists(bunLockfile)
+	hasBunBin := fileExists(bunLockfileBin)
 
 	var found []string
 	if hasNPM {
@@ -32,8 +33,11 @@ func Detect() (string, error) {
 	if hasYarn {
 		found = append(found, yarnLockfile)
 	}
-	if hasBun {
+	switch {
+	case hasBunTxt:
 		found = append(found, bunLockfile)
+	case hasBunBin:
+		found = append(found, bunLockfileBin)
 	}
 
 	if len(found) > 1 {
@@ -47,7 +51,7 @@ func Detect() (string, error) {
 		return "pnpm", nil
 	case hasYarn:
 		return "yarn", nil
-	case hasBun:
+	case hasBunTxt || hasBunBin:
 		return "bun", nil
 	default:
 		return "", fmt.Errorf("no lockfile found (%s, %s, %s, or %s)",

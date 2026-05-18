@@ -44,24 +44,14 @@ func (a *Adapter) resolveOnly(ctx context.Context, args ...string) error {
 	cmd := a.CommandContext(ctx, "bun", cmdArgs...)
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return a.installFallback(ctx, args...)
+		return fmt.Errorf("bun install --frozen-lockfile failed: %w", err)
 	}
 
 	if hasLockfile() {
 		return nil
 	}
 
-	return a.installFallback(ctx, args...)
-}
-
-func (a *Adapter) installFallback(ctx context.Context, args ...string) error {
-	cmdArgs := append([]string{"install"}, args...)
-	cmd := a.CommandContext(ctx, "bun", cmdArgs...)
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("bun install failed: %w", err)
-	}
-	return nil
+	return fmt.Errorf("bun.lock not found after resolution")
 }
 
 func hasLockfile() bool {
@@ -90,6 +80,7 @@ func (a *Adapter) GetTree(ctx context.Context) (pkgmanager.DependencyTree, error
 
 	nodes, err := ParseBunLockfile(ctx)
 	if err != nil {
+		slog.Warn("lockfile parse failed, falling back to CLI", "err", err)
 		return a.getTreeViaPm(ctx)
 	}
 

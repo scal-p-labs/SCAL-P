@@ -1,6 +1,7 @@
 package yarn
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -41,11 +42,11 @@ func (a *Adapter) resolveOnly(ctx context.Context, args ...string) error {
 		return err
 	}
 
-	cmdArgs := append([]string{"install", "--mode=skip-build"}, args...)
+	cmdArgs := append([]string{"install", "--mode=skip-build", "--immutable"}, args...)
 	cmd := a.CommandContext(ctx, "yarn", cmdArgs...)
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("yarn install --mode=skip-build failed: %w", err)
+		return fmt.Errorf("yarn install --mode=skip-build --immutable failed: %w", err)
 	}
 
 	if _, err := os.Stat("yarn.lock"); err != nil {
@@ -54,13 +55,9 @@ func (a *Adapter) resolveOnly(ctx context.Context, args ...string) error {
 	return nil
 }
 
-type yarnListEntry struct {
-	Value    string                   `json:"value"`
-	Children map[string]yarnListEntry `json:"children"`
-}
-
-type yarnLsOutput struct {
-	Children map[string]yarnListEntry `json:"children"`
+type yarnInfoEntry struct {
+	Value    string                    `json:"value"`
+	Children map[string]yarnInfoEntry `json:"children"`
 }
 
 func (a *Adapter) GetTree(ctx context.Context) (pkgmanager.DependencyTree, error) {
@@ -70,6 +67,7 @@ func (a *Adapter) GetTree(ctx context.Context) (pkgmanager.DependencyTree, error
 
 	nodes, err := ParseYarnLockfile(ctx)
 	if err != nil {
+		slog.Warn("lockfile parse failed, falling back to CLI", "err", err)
 		return a.getTreeViaList(ctx)
 	}
 
@@ -90,63 +88,98 @@ func (a *Adapter) GetTree(ctx context.Context) (pkgmanager.DependencyTree, error
 }
 
 func (a *Adapter) getTreeViaList(ctx context.Context) (pkgmanager.DependencyTree, error) {
-	cmd := a.CommandContext(ctx, "yarn", "list", "--json", "--depth=Infinity", "--all")
+	cmd := a.CommandContext(ctx, "yarn", "info", "--all", "--recursive", "--json")
 	cmd.Stderr = os.Stderr
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return pkgmanager.DependencyTree{}, fmt.Errorf("stdout pipe: %w", err)
 	}
 	if err := cmd.Start(); err != nil {
-		return pkgmanager.DependencyTree{}, fmt.Errorf("yarn list start: %w", err)
+		return pkgmanager.DependencyTree{}, fmt.Errorf("yarn info start: %w", err)
 	}
 
-	var output yarnLsOutput
-	if err := json.NewDecoder(stdout).Decode(&output); err != nil {
-		return pkgmanager.DependencyTree{}, fmt.Errorf("invalid yarn list output: %w", err)
+	allDeps := make(map[string]pkgmanager.DependencyRef)
+	var rootName, rootVersion string
+
+	scanner := bufio.NewScanner(stdout)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+		var entry yarnInfoEntry
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			slog.Warn("skipping unparseable yarn info line", "err", err)
+			continue
+		}
+
+		if rootName == "" {
+			rootName, rootVersion = splitYarnDescriptor(entry.Value)
+		}
+		for childKey, childEntry := range entry.Children {
+			childName, childVer := splitYarnDescriptor(childEntry.Value)
+			if childName == "" {
+				childName, _ = splitYarnDescriptor(childKey)
+			}
+			allDeps[childName] = pkgmanager.DependencyRef{
+				Version:      childVer,
+				Dependencies: convertYarnInfoChildren(childEntry.Children),
+			}
+		}
 	}
 
 	if err := cmd.Wait(); err != nil {
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) {
-			return pkgmanager.DependencyTree{}, fmt.Errorf("yarn list failed: %w", err)
+			return pkgmanager.DependencyTree{}, fmt.Errorf("yarn info failed: %w", err)
 		}
-		slog.Warn("yarn list finished with non-zero exit — tree data may be incomplete",
+		slog.Warn("yarn info finished with non-zero exit — tree data may be incomplete",
 			"exitCode", exitErr.ExitCode(),
 		)
 	}
 
+	if rootName == "" {
+		rootName = "yarn-project"
+	}
+	if rootVersion == "" {
+		rootVersion = "0.0"
+	}
+
 	return pkgmanager.DependencyTree{
-		Name:         "yarn-project",
-		Version:      "0.0",
-		Dependencies: convertYarnList(output.Children),
+		Name:         rootName,
+		Version:      rootVersion,
+		Dependencies: allDeps,
 	}, nil
 }
 
-func convertYarnList(children map[string]yarnListEntry) map[string]pkgmanager.DependencyRef {
+func splitYarnDescriptor(value string) (name, version string) {
+	idx := strings.LastIndex(value, "@npm:")
+	if idx > 0 {
+		return value[:idx], value[idx+len("@npm:"):]
+	}
+	idx = strings.LastIndex(value, "@")
+	if idx > 0 {
+		return value[:idx], value[idx+1:]
+	}
+	return value, ""
+}
+
+func convertYarnInfoChildren(children map[string]yarnInfoEntry) map[string]pkgmanager.DependencyRef {
 	if len(children) == 0 {
 		return nil
 	}
 	result := make(map[string]pkgmanager.DependencyRef, len(children))
-	for name, entry := range children {
-		version := extractYarnValueVersion(entry.Value)
-		result[name] = pkgmanager.DependencyRef{
-			Version:      version,
-			Dependencies: convertYarnList(entry.Children),
+	for childKey, childEntry := range children {
+		childName, childVer := splitYarnDescriptor(childEntry.Value)
+		if childName == "" {
+			childName, _ = splitYarnDescriptor(childKey)
+		}
+		result[childName] = pkgmanager.DependencyRef{
+			Version:      childVer,
+			Dependencies: convertYarnInfoChildren(childEntry.Children),
 		}
 	}
 	return result
-}
-
-func extractYarnValueVersion(value string) string {
-	idx := strings.LastIndex(value, "@npm:")
-	if idx > 0 {
-		return value[idx+len("@npm:"):]
-	}
-	idx = strings.LastIndex(value, "@")
-	if idx > 0 {
-		return value[idx+1:]
-	}
-	return value
 }
 
 func (a *Adapter) Install(ctx context.Context, args ...string) error {
