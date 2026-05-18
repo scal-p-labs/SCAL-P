@@ -37,9 +37,7 @@ _No CVEs found._
 {
   "version": 1,
   "trust": {
-    "mode": "audit-only",
-    "min_score": 0,
-    "require_hash": false
+    "mode": "audit-only"
   },
   "packages": {
     "allow": null,
