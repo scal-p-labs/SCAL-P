@@ -1,6 +1,6 @@
 # SCAL-P — Secure Chain Assurance Layer for Packages
 
-> Policy enforcement, dependency hashing, trust scoring, and audit for npm and pnpm.
+> Policy enforcement, dependency hashing, trust scoring, and audit for npm, pnpm, yarn, and bun.
 > Zero external dependencies — only the Go standard library.
 
 ```bash
@@ -16,9 +16,11 @@ scalp verify --artifact <file> --checksum <file>     # verify release artifact
 
 ## Why
 
-npm/pnpm run arbitrary code during install. SCAL-P flips the order: policy before trust, hash after install, audit always.
+npm/pnpm/yarn/bun run arbitrary code during install. SCAL-P flips the order: policy before trust, hash after install, audit always.
 
-v0.2 adds trust scores (numeric risk dimension), pnpm support, a dedicated CI command, and the ability to verify SCAL-P's own releases (dogfooding).
+v0.2 added trust scores (numeric risk dimension), pnpm support, a dedicated CI command, and the ability to verify SCAL-P's own releases (dogfooding).
+
+v0.3 adds yarn (Berry v2+) and bun support, with direct lockfile parsing for both.
 
 ---
 
@@ -148,23 +150,32 @@ Offline-first: network failure = half points, not zero. `require_hash`: missing 
 
 ## Package managers
 
-npm and pnpm are auto-detected from the lockfile (`package-lock.json` / `pnpm-lock.yaml`). Most of the time you don't need `--pm`:
+npm, pnpm, yarn (Berry v2+), and bun are auto-detected from the lockfile:
+
+| Lockfile | Package manager |
+|----------|----------------|
+| `package-lock.json` | npm |
+| `pnpm-lock.yaml` | pnpm |
+| `yarn.lock` | yarn (Berry v2+) |
+| `bun.lock` / `bun.lockb` | bun |
+
+Most of the time you don't need `--pm`:
 
 ```bash
-scalp install          # auto: npm or pnpm
-scalp audit            # auto: npm or pnpm
-scalp ci               # auto: npm or pnpm
+scalp install          # auto: npm, pnpm, yarn, or bun
+scalp audit            # auto: npm, pnpm, yarn, or bun
+scalp ci               # auto: npm, pnpm, yarn, or bun
 ```
 
 Override with `--pm` when needed:
 
 ```bash
-scalp install --pm pnpm --guarded  # force pnpm
-scalp audit --pm npm               # force npm
-scalp ci --pm pnpm                 # CI with pnpm
+scalp install --pm yarn --guarded     # force yarn
+scalp audit --pm bun                  # force bun
+scalp ci --pm pnpm                    # CI with pnpm
 ```
 
-If both lockfiles are present (or none), `--pm` is required.
+If multiple lockfiles are present (or none), `--pm` is required.
 
 ---
 
@@ -184,6 +195,8 @@ internal/
 ├── pkgmanager/                # PackageManager interface + registry
 ├── npm/                       # npm adapter
 ├── pnpm/                      # pnpm adapter
+├── yarn/                      # yarn (Berry) adapter
+├── bun/                       # bun adapter
 └── version/                   # build-time version injection
 ```
 

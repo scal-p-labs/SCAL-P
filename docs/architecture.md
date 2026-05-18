@@ -1,6 +1,6 @@
 # Architecture
 
-**How the pieces fit together — data flow from CLI to audit log.**
+**How the pieces fit together — data flow from CLI to audit log. v0.3 adds yarn (Berry) and bun adapters.**
 
 > SCAL-P is not a daemon, not a proxy, not a plugin. It's a CLI tool that wraps your package manager. Every invocation is stateless: load policy, resolve, evaluate, act, log, exit.
 
@@ -16,15 +16,19 @@ CLI (scalp install --guarded)
 │    │  default if missing
 │    └─> Policy struct
 │
-├─ 2. Resolve ─────────────────────────── internal/npm/ or internal/pnpm/
+├─ 2. Resolve ─────────────────────────── internal/npm|pnpm|yarn|bun/
 │    │  npm install --package-lock-only
 │    │  pnpm install --lockfile-only
-│    └─> package-lock.json / pnpm-lock.yaml
+│    │  yarn install --mode=skip-build
+│    │  bun install --frozen-lockfile
+│    └─> PM-specific lockfile
 │
 ├─ 3. Parse lockfile ──────────────────── internal/pkgmanager/
 │    │  adapter.ParseLockfile(ctx)
 │    │  npm: reads package-lock.json
 │    │  pnpm: reads pnpm-lock.yaml
+│    │  yarn: reads yarn.lock
+│    │  bun: reads bun.lock
 │    └─> []PackageNode
 │
 ├─ 4. Evaluate policy ─────────────────── internal/policy/
@@ -47,8 +51,8 @@ CLI (scalp install --guarded)
 │    │  log   → silent
 │    └─> audit events logged
 │
-├─ 7. Install ─────────────────────────── internal/npm/ or internal/pnpm/
-│    │  npm install / pnpm install
+├─ 7. Install ─────────────────────────── internal/npm|pnpm|yarn|bun/
+│    │  npm install / pnpm install / yarn install / bun install
 │    │  --ignore-scripts in CI/fork context
 │    └─> node_modules/ populated
 │
@@ -56,6 +60,8 @@ CLI (scalp install --guarded)
 │    │  adapter.GetTree(ctx)
 │    │  npm ls --all --json
 │    │  pnpm ls --json --depth Infinity
+│    │  yarn list --json --depth=Infinity --all (or lockfile fast path)
+│    │  bun pm ls --all --json (or lockfile fast path)
 │    └─> DependencyTree
 │
 ├─ 9. Hash sync ───────────────────────── internal/lockfile/
@@ -81,10 +87,10 @@ CLI (scalp install --guarded)
 └──────┬──────┘
        │
        ▼
-┌─────────────┐     ┌──────────────────┐
-│  pkgmanager │────▶│  npm / pnpm      │  adapter pattern
-│  interface  │     │  adapter         │  exec.CommandContext for PM
-└──────┬──────┘     └──────────────────┘
+┌─────────────┐     ┌────────────────────────────┐
+│  pkgmanager │────▶│  npm / pnpm / yarn / bun   │  adapter pattern
+│  interface  │     │  adapter                   │  exec.CommandContext for PM
+└──────┬──────┘     └────────────────────────────┘
        │
        ▼
 ┌─────────────┐     ┌──────────────────┐
@@ -126,7 +132,7 @@ PackageManager
 └── LocalPath(name) string
 ```
 
-Currently implemented: npm, pnpm. The registry in `internal/pkgmanager/registry.go` maps names to constructors, called from `cli.init()`.
+Currently implemented: npm, pnpm, yarn (Berry v2+), bun. The registry in `internal/pkgmanager/registry.go` maps names to constructors, called from `cli.init()`.
 
 To add a new PM: implement the interface, register it, done.
 

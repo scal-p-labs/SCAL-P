@@ -9,7 +9,7 @@
 ## What it does
 
 ```bash
-scalp ci [--pm npm] [--output scalp-report.json] [--pr-context fork] [--allow-scripts]
+scalp ci [--pm npm|pnpm|yarn|bun] [--output scalp-report.json] [--pr-context fork] [--allow-scripts]
 ```
 
 Flow, in order:
