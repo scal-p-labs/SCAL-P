@@ -306,6 +306,11 @@ func parseLockfileYAML(data []byte) ([]pkgmanager.PackageNode, error) {
 			if err := state.handleSubProperty(trimmed); err != nil {
 				return nil, err
 			}
+
+		default:
+			// Lines at indent >= 8 (e.g. dependency specifiers, patched
+			// dependency properties) are silently skipped — they are deeper
+			// nesting that SCAL-P does not need to parse.
 		}
 	}
 
@@ -334,15 +339,15 @@ func parseLockfileYAML(data []byte) ([]pkgmanager.PackageNode, error) {
 	return nodes, nil
 }
 
-// validateIndent returns an error if indent is not a known level.
+// validateIndent returns an error if indent is not a valid level.
+// pnpm-lock.yaml can nest arbitrarily deep (dependencies, optionalDependencies,
+// patchedDependencies, etc.), so any even indent from 2 to 20 is accepted.
 func validateIndent(indent int) error {
-	switch indent {
-	case indentPkgKey, indentPkgProperty, indentPkgSubProp:
+	if indent >= indentPkgKey && indent <= 20 && indent%2 == 0 {
 		return nil
-	default:
-		return fmt.Errorf("unexpected indent level %d (expected %d, %d, or %d)",
-			indent, indentPkgKey, indentPkgProperty, indentPkgSubProp)
 	}
+	return fmt.Errorf("unexpected indent level %d (expected even indent 2-20)",
+		indent)
 }
 
 // flushEntry appends the current entry to the entries slice and resets it.

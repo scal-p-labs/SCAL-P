@@ -814,6 +814,39 @@ func TestParseLockfile_MalformedStructure(t *testing.T) {
 		}
 	})
 
+	t.Run("indent 8 silently skipped (deep nesting)", func(t *testing.T) {
+		dir := t.TempDir()
+		oldWd, _ := os.Getwd()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := os.Chdir(oldWd); err != nil {
+				t.Error(err)
+			}
+		}()
+
+		lockfile := "lockfileVersion: '9.0'\npackages:\n  /pkg/1.0.0:\n    resolution: {integrity: sha512-test==}\n    dependencies:\n      sub-dep:\n        version: 2.0.0\n        specifier: ^2.0.0\n"
+		if err := os.WriteFile("pnpm-lock.yaml", []byte(lockfile), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		a := pnpm.New()
+		nodes, err := a.ParseLockfile(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(nodes) != 1 {
+			t.Fatalf("expected 1 node, got %d", len(nodes))
+		}
+		if nodes[0].Name != "pkg" {
+			t.Errorf("expected pkg, got %s", nodes[0].Name)
+		}
+		if nodes[0].Version != "1.0.0" {
+			t.Errorf("expected 1.0.0, got %s", nodes[0].Version)
+		}
+	})
+
 	t.Run("orphan sub-property silently skipped", func(t *testing.T) {
 		dir := t.TempDir()
 		oldWd, _ := os.Getwd()
