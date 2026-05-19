@@ -217,3 +217,8 @@
 {"ts":"2026-05-18T18:19:09Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
 {"ts":"2026-05-18T18:19:09Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
 {"ts":"2026-05-18T18:19:10Z","event":"binary_verify","pkg":"good.tar.gz","status":"mismatch"}
+{"ts":"2026-05-19T19:36:06Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
+{"ts":"2026-05-19T19:36:07Z","event":"policy_missing","status":"warn","reason":"policy_not_found"}
+{"ts":"2026-05-19T19:36:08Z","event":"binary_verify","pkg":"good.tar.gz","status":"mismatch"}
+{"ts":"2026-05-19T19:36:09Z","event":"binary_verify","pkg":"release.tar.gz","status":"verified","hash_match":true}
+{"ts":"2026-05-19T19:36:09Z","event":"binary_verify","pkg":"release.tar.gz","status":"mismatch"}
