@@ -205,9 +205,10 @@ const maxPnpmEntries = 100000
 
 // Known indent levels in pnpm-lock.yaml packages section.
 const (
-	indentPkgKey      = 2 // /lodash/4.17.21:
-	indentPkgProperty = 4 // resolution:, engines:, dev:
-	indentPkgSubProp  = 6 // integrity: sha512-... (under resolution:)
+	indentPkgKey      = 2  // /lodash/4.17.21:
+	indentPkgProperty = 4  // resolution:, engines:, dev:
+	indentPkgSubProp  = 6  // integrity: sha512-... (under resolution:)
+	maxIndent         = 20 // maximum accepted indent depth
 )
 
 // lockfilePkgEntry holds parsed data for a single package in pnpm-lock.yaml.
@@ -343,11 +344,11 @@ func parseLockfileYAML(data []byte) ([]pkgmanager.PackageNode, error) {
 // pnpm-lock.yaml can nest arbitrarily deep (dependencies, optionalDependencies,
 // patchedDependencies, etc.), so any even indent from 2 to 20 is accepted.
 func validateIndent(indent int) error {
-	if indent >= indentPkgKey && indent <= 20 && indent%2 == 0 {
+	if indent >= indentPkgKey && indent <= maxIndent && indent%2 == 0 {
 		return nil
 	}
-	return fmt.Errorf("unexpected indent level %d (expected even indent 2-20)",
-		indent)
+	return fmt.Errorf("unexpected indent level %d (expected even indent %d-%d)",
+		indent, indentPkgKey, maxIndent)
 }
 
 // flushEntry appends the current entry to the entries slice and resets it.
