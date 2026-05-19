@@ -6,3 +6,4 @@ dist/
 .scalp/audit.log
 .scalp/cache/
 .scalp/lockfile.json
+**/.scalp/

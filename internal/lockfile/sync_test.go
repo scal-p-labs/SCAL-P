@@ -220,6 +220,25 @@ func TestVerifyAgainstTree(t *testing.T) {
 			t.Errorf("expected 1 event, got %d", len(events))
 		}
 	})
+
+	t.Run("lockfile package missing from tree is violation", func(t *testing.T) {
+		lf := newLockfile("")
+		lf.Packages["missing@1.0"] = newEntry("url", "hash", "now")
+
+		violations, events, err := lockfile.VerifyAgainstTree(context.Background(), &lf, pkgmanager.DependencyTree{}, npmPM())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(violations) != 1 {
+			t.Fatalf("expected 1 violation, got %d", len(violations))
+		}
+		if violations[0].Reason != "package_not_installed" {
+			t.Errorf("expected package_not_installed, got %s", violations[0].Reason)
+		}
+		if len(events) != 1 || events[0].Status != "missing" {
+			t.Errorf("expected missing event, got %+v", events)
+		}
+	})
 }
 
 // Tests for adversarial scenarios.

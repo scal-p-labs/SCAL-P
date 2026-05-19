@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"scal-p/internal/audit"
@@ -146,6 +147,31 @@ func VerifyAgainstTree(ctx context.Context, lf *Lockfile, tree pkgmanager.Depend
 			Package:   key,
 			Status:    statusFromMatch(match),
 			HashMatch: match,
+		})
+	}
+
+	missingKeys := make([]string, 0, len(lf.Packages))
+	for key := range lf.Packages {
+		if !seen[key] {
+			missingKeys = append(missingKeys, key)
+		}
+	}
+	sort.Strings(missingKeys)
+	for _, key := range missingKeys {
+		if err := ctxutil.Check(ctx); err != nil {
+			return nil, nil, err
+		}
+		violations = append(violations, policy.Violation{
+			PackageID: key,
+			Reason:    "package_not_installed",
+			Rule:      "lockfile",
+		})
+		events = append(events, audit.Event{
+			Timestamp: now,
+			Event:     "hash_check",
+			Package:   key,
+			Status:    "missing",
+			Reason:    "package_not_installed",
 		})
 	}
 

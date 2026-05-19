@@ -99,5 +99,7 @@ func TestE2E_Failure_MissingNodeModules(t *testing.T) {
 	removeDir(t, filepath.Join(dir, "node_modules"))
 	result = runScalp(t, dir, "audit", "--pm", "npm")
 
-	assertContains(t, strings.ToLower(result.String()), "non-zero exit")
+	if !eventInAudit(readAuditLog(t, dir), "reason", "package_not_installed") {
+		t.Fatalf("expected package_not_installed event in audit log, output:\n%s", result.String())
+	}
 }
