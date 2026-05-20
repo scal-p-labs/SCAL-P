@@ -101,7 +101,7 @@ The `audit` section counts three categories from the hash verification:
 | `mismatched` | On-disk hash differs from lockfile (tampered or corrupted) |
 | `missing` | Package in tree but absent from lockfile, or not installed |
 
-SARIF output is planned for v0.3.
+SARIF output is COMPLETED IN [v0.2.20](https://github.com/scal-p-labs/SCAL-P/releases/tag/v0.2.20).
 
 ---
 
