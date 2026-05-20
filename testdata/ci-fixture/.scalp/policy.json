@@ -1,0 +1,14 @@
+{
+  "trust": {
+    "mode": "audit-only",
+    "min_score": 0,
+    "require_hash": false
+  },
+  "packages": {
+    "allow": []
+  },
+  "enforcement": {
+    "on_violation": "warn",
+    "default_mode": "audit-only"
+  }
+}

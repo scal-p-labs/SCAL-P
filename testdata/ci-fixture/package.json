@@ -1,0 +1,8 @@
+{
+  "name": "scalp-ci-fixture",
+  "version": "0.0.0",
+  "private": true,
+  "dependencies": {
+    "is-number": "^7.0.0"
+  }
+}
