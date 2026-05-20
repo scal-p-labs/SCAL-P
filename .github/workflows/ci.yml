@@ -80,12 +80,12 @@ jobs:
             --sarif .scalp/scalp-report.sarif
       - name: Upload SARIF to Code Scanning
         if: always()
-        uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
+        uses: github/codeql-action/upload-sarif@f25eda876ebb741d872b63b9f2c6dfdd77f14b83 # v4.35.5
         with:
           sarif_file: testdata/ci-fixture/.scalp/scalp-report.sarif
       - name: Upload reports as artifacts
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b320ff763a0b0e26ddabfcaa0 # v4.7.0
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: scalp-reports
           path: |
