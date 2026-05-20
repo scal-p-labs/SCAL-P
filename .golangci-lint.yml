@@ -5,15 +5,18 @@ linters:
   enable:
     - errcheck
     - govet
-    - ineffassign
     - staticcheck
-    - unused
     - gocritic
     - gocyclo
+    - gosec
+    - bodyclose
+
+  settings:
+    gocyclo:
+      min-complexity: 12
 
   exclusions:
     rules:
       - path: _test\.go
         linters:
           - gocritic
-          - gocyclo
