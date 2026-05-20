@@ -20,5 +20,9 @@
       "matchUpdateTypes": ["major"],
       "groupName": "GitHub Actions major updates"
     }
-  ]
+  ],
+  "automerge": false,
+  "reviewers": ["CarlosEduJs"],
+  "branchPrefix": "renovate/",
+  "gitAuthor": "Renovate Bot <bot@renovateapp.com>"
 }
