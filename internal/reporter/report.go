@@ -41,7 +41,7 @@ type AuditData struct {
 }
 
 // WriteAuditReport detects the report format from the file extension and
-// writes the report. Supported extensions: .md / .markdown.
+// writes the report. Supported extensions: .md / .markdown, .sarif.
 // When path is "-" it writes to stdout.
 func WriteAuditReport(path string, data AuditData) error {
 	format := formatFromExt(path)
@@ -51,8 +51,10 @@ func WriteAuditReport(path string, data AuditData) error {
 	switch format {
 	case "md", "markdown":
 		content, err = RenderAuditMarkdown(data)
+	case "sarif":
+		content, err = RenderSarif(data)
 	default:
-		return fmt.Errorf("unsupported report format: %s (supported: .md)", format)
+		return fmt.Errorf("unsupported report format: %s (supported: .md, .sarif)", format)
 	}
 	if err != nil {
 		return fmt.Errorf("render %s report: %w", format, err)

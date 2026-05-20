@@ -15,6 +15,7 @@ type cliConfig struct {
 	report       string
 	artifact     string
 	checksumFile string
+	sarifReport  string
 }
 
 func applyDefaults(cfg *cliConfig) {

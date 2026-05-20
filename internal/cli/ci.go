@@ -13,6 +13,7 @@ import (
 	"scal-p/internal/policy"
 	"scal-p/internal/reporter"
 	"scal-p/internal/trust"
+	"scal-p/internal/version"
 )
 
 func runCi(ctx context.Context, args []string) error {
@@ -23,6 +24,7 @@ func runCi(ctx context.Context, args []string) error {
 	output := fs.String("output", ".scalp/ci-report.json", "report output path")
 	prContext := fs.String("pr-context", "fork", "PR context: fork (default) or internal")
 	allowScripts := fs.Bool("allow-scripts", false, "allow install scripts to run (internal only)")
+	fs.StringVar(&cfg.sarifReport, "sarif", "", "output path for SARIF report")
 
 	if err := parseFlagSet(fs, args); err != nil {
 		return err
@@ -91,6 +93,11 @@ func runCi(ctx context.Context, args []string) error {
 		if err := reporter.WriteReport(*output, false, violations, nil); err != nil {
 			slog.Warn("report", "err", err)
 		}
+		if cfg.sarifReport != "" {
+			if err := writeSarif(cfg.sarifReport, false, violations); err != nil {
+				slog.Warn("sarif report", "err", err)
+			}
+		}
 		return policy.ApplyEnforcement(policy.EnforceBlock, violations)
 	}
 
@@ -136,9 +143,30 @@ func runCi(ctx context.Context, args []string) error {
 		return fmt.Errorf("write report: %w", err)
 	}
 
+	allViolations := append(violations, auditViolations...)
+
+	if cfg.sarifReport != "" {
+		if err := writeSarif(cfg.sarifReport, passed, allViolations); err != nil {
+			slog.Warn("sarif report", "err", err)
+		}
+	}
+
 	if !passed {
 		return fmt.Errorf("ci failed: %d hash violations", len(auditViolations))
 	}
 
 	return nil
+}
+
+func writeSarif(path string, passed bool, violations []policy.Violation) error {
+	data, err := reporter.RenderSarifFromViolations(
+		version.Version,
+		time.Now().UTC().Format(time.RFC3339),
+		passed,
+		violations,
+	)
+	if err != nil {
+		return fmt.Errorf("render sarif: %w", err)
+	}
+	return reporter.WriteFile(path, data)
 }
