@@ -52,8 +52,8 @@ func bunSplitNameVersion(s string) (name, version string) {
 type bunLockJSONPackage [4]json.RawMessage
 
 type bunLockJSON struct {
-	LockfileVersion int                            `json:"lockfileVersion"`
-	Packages        map[string]bunLockJSONPackage  `json:"packages"`
+	LockfileVersion int                           `json:"lockfileVersion"`
+	Packages        map[string]bunLockJSONPackage `json:"packages"`
 }
 
 func sanitizeBunJSON(data []byte) []byte {
