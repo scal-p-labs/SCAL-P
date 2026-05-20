@@ -8,22 +8,22 @@
 
 ## 1. Install scalp
 
-Download the latest binary from [releases](https://github.com/CarlosEduJs/SCAL-P/releases):
+Download the latest binary from [releases](https://github.com/scal-p-labs/SCAL-P/releases):
 
 ```bash
 # Linux
-curl -L https://github.com/CarlosEduJs/SCAL-P/releases/latest/download/scalp_linux_amd64.tar.gz | tar xz
+curl -L https://github.com/scal-p-labs/SCAL-P/releases/latest/download/scalp_linux_amd64.tar.gz | tar xz
 sudo mv scalp /usr/local/bin/
 
 # macOS
-curl -L https://github.com/CarlosEduJs/SCAL-P/releases/latest/download/scalp_darwin_amd64.tar.gz | tar xz
+curl -L https://github.com/scal-p-labs/SCAL-P/releases/latest/download/scalp_darwin_amd64.tar.gz | tar xz
 sudo mv scalp /usr/local/bin/
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/CarlosEduJs/SCAL-P
+git clone https://github.com/scal-p-labs/SCAL-P
 cd SCAL-P
 make build
 # binary at .bin/scal-p

@@ -24,7 +24,7 @@ v0.2 added trust scores (numeric risk dimension), pnpm, bun and yarn (Berry v2+)
 
 ## Install
 
-Download from [releases](https://github.com/CarlosEduJs/SCAL-P/releases), or build:
+Download from [releases](https://github.com/scal-p-labs/SCAL-P/releases), or build:
 
 ```bash
 make build

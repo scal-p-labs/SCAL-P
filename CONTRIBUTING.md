@@ -316,4 +316,4 @@ See [docs/RFC.md](docs/RFC.md) for the full design rationale.
 
 ## Questions?
 
-Open a [discussion](https://github.com/carlosedujs/scal-p/discussions) or check `docs/RFC.md`.
+Open a [discussion](https://github.com/scal-p-labs/scal-p/discussions) or check `docs/RFC.md`.
