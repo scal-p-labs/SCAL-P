@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -90,6 +91,7 @@ func runCi(ctx context.Context, args []string) error {
 	}
 
 	if len(violations) > 0 {
+		annotateViolations(violations)
 		if err := reporter.WriteReport(*output, false, violations, nil); err != nil {
 			slog.Warn("report", "err", err)
 		}
@@ -145,6 +147,8 @@ func runCi(ctx context.Context, args []string) error {
 
 	allViolations := append(violations, auditViolations...)
 
+	annotateViolations(allViolations)
+
 	if cfg.sarifReport != "" {
 		if err := writeSarif(cfg.sarifReport, passed, allViolations); err != nil {
 			slog.Warn("sarif report", "err", err)
@@ -156,6 +160,38 @@ func runCi(ctx context.Context, args []string) error {
 	}
 
 	return nil
+}
+
+func annotateViolations(violations []policy.Violation) {
+	if os.Getenv("GITHUB_ACTIONS") != "true" {
+		return
+	}
+	for _, v := range violations {
+		ruleID := normalizeRuleName(v.Rule)
+		level := "error"
+		if ruleID == "max_depth" {
+			level = "warning"
+		}
+		pkg := shortPkgID(v.PackageID)
+		fmt.Printf("::%s title=SCAL-P (%s),file=package.json,line=1::[%s] %s — %s\n",
+			level, ruleID, ruleID, pkg, v.Reason)
+	}
+}
+
+// normalizeRuleName extracts the rule name from a rule value like "require_hash:true".
+func normalizeRuleName(rule string) string {
+	if idx := strings.IndexByte(rule, ':'); idx != -1 {
+		return rule[:idx]
+	}
+	return rule
+}
+
+// shortPkgID returns the package name without version.
+func shortPkgID(pkgID string) string {
+	if idx := strings.IndexByte(pkgID, '@'); idx != -1 {
+		return pkgID[:idx]
+	}
+	return pkgID
 }
 
 func writeSarif(path string, passed bool, violations []policy.Violation) error {
