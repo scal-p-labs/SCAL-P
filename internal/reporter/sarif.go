@@ -102,6 +102,7 @@ var knownRules = map[string]ruleInfo{
 	"max_depth":      {id: "max_depth", description: "Transitive dependency exceeds maximum allowed depth", level: "warning"},
 	"binary_verify":  {id: "binary_verify", description: "Release artifact checksum verification failed", level: "error"},
 	"hash_integrity": {id: "hash_integrity", description: "Installed package hash does not match the lockfile", level: "error"},
+	"stage_verify":   {id: "stage_verify", description: "Staged package tarball verification failed", level: "error"},
 }
 
 // RenderSarif produces a SARIF report from audit data.

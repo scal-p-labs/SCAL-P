@@ -56,6 +56,8 @@ func RunContext(ctx context.Context, args []string) error {
 		err = runChecksum(ctx, args[1:])
 	case "policy":
 		err = runPolicy(ctx, args[1:])
+	case "stage":
+		err = runStage(ctx, args[1:])
 	case "help", "-h", "--help":
 		return usageError()
 	default:
@@ -83,6 +85,7 @@ Usage:
   scalp policy check [flags]
   scalp verify --artifact <file> --checksum <file> [flags]
   scalp checksum [--output <file>] <files...>
+  scalp stage verify --stage-id <pkg> [flags]
 
 Commands:
   ci            resolve, evaluate, install, audit — single CI step (always blocks)
@@ -91,6 +94,7 @@ Commands:
   policy check  evaluate policy without installing
   verify        verify release artifact against checksums file
   checksum      generate SHA-512 checksums for files
+  stage verify  verify a staged package tarball from stdin
 
 Global flags:
   --pm string       package manager (auto-detected: npm|pnpm|yarn|bun)

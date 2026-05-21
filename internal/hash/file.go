@@ -25,3 +25,10 @@ func File(ctx context.Context, path string) (string, error) {
 	sum := sha512.Sum512(data)
 	return "sha512-" + base64.StdEncoding.EncodeToString(sum[:]), nil
 }
+
+// Bytes computes the SHA-512 hash of raw bytes.
+// Returns "sha512-<base64>" — same format as File().
+func Bytes(data []byte) string {
+	sum := sha512.Sum512(data)
+	return "sha512-" + base64.StdEncoding.EncodeToString(sum[:])
+}
