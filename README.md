@@ -1,5 +1,7 @@
 # SCAL-P — Secure Chain Assurance Layer for Packages
 
+![logo](https://raw.githubusercontent.com/scal-p-labs/assets/main/banner.png)
+
 > Policy enforcement, dependency hashing, trust scoring, audit, and staged package verification for npm, pnpm, yarn, and bun.
 > Zero external dependencies — only the Go standard library.
 
