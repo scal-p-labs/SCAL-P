@@ -78,12 +78,55 @@ CLI (scalp install --guarded)
 
 ---
 
+## Data flow (stage verify)
+
+```
+CLI (scalp stage verify --stage-id <pkg>)
+│
+├─ 1. Load policy ─────────────────────── internal/policy/
+│    │  .scalp/policy.json
+│    └─> Policy struct
+│
+├─ 2. Stream tarball from stdin ───────── crypto/sha512 (streaming)
+│    │  io.TeeReader(os.Stdin, sha512.New())
+│    │  Simultaneously hash + decompress
+│    └─> Tarball data → gzip.NewReader → tar.NewReader
+│
+├─ 3. Extract package identity ────────── archive/tar
+│    │  Find package/package.json
+│    │  Parse JSON name field
+│    └─> Package name (denylist target)
+│
+├─ 4. Verify checksum ─────────────────── crypto/sha512
+│    │  Compare h.Sum() against --checksum
+│    └─> Violation if mismatch
+│
+├─ 5. Verify stage ID ─────────────────── internal/cli/stage.go
+│    │  Compare extracted name against --stage-id
+│    └─> Violation if mismatch (bypass prevention)
+│
+├─ 6. Denylist check ──────────────────── internal/policy/
+│    │  Check extracted name against package deny rules
+│    │  Name match (EqualFold) + pattern match
+│    └─> Violation if matched
+│
+├─ 7. SARIF output ────────────────────── internal/reporter/
+│    │  RenderSarifFromViolations with stage ID as artifact URI
+│    └─> .sarif file (if --sarif provided)
+│
+└─ 8. Enforce ─────────────────────────── internal/policy/
+     │  --ci → block, otherwise policy on_violation
+     └─> Exit 0 or 1
+```
+
+---
+
 ## Component diagram
 
 ```
 ┌─────────────┐
 │    CLI      │  internal/cli/ — command routing, flag parsing
-│  cli.go     │  install, audit, ci, verify, checksum
+│  cli.go     │  install, audit, ci, verify, checksum, stage
 └──────┬──────┘
        │
        ▼
@@ -105,14 +148,14 @@ CLI (scalp install --guarded)
                            │
                            ▼ (if passed)
                     ┌──────────────┐
-                    │  hash        │  hash.Dir() / hash.File()
+                    │  hash        │  hash.Dir() / hash.File() / hash.Bytes()
                     │  lockfile    │  .scalp/lockfile.json
                     └──────┬───────┘
                            │
                            ▼
                     ┌──────────────┐
                     │  audit       │  NDJSON logger
-                    │  reporter    │  structured JSON (CI)
+                    │  reporter    │  structured JSON + SARIF 2.1.0
                     └──────────────┘
 ```
 
@@ -169,15 +212,15 @@ scalp ci
 ├─ 2. Resolve (lockfile-only)
 ├─ 3. Parse lockfile
 ├─ 4. Evaluate policy + trust
-├─ 5. If violations → write report → exit 1 (never installs)
+├─ 5. If violations → annotate PR, write report, optional SARIF → exit 1
 ├─ 6. Install (--ignore-scripts in fork context)
 ├─ 7. Hash sync (hash.Dir → .scalp/lockfile.json)
 ├─ 8. Verify against tree (detect tampering)
-├─ 9. Write report (.scalp/ci-report.json or stdout)
+├─ 9. Write report (.scalp/ci-report.json or stdout) + optional SARIF
 └─ 10. Exit 0 if no violations, 1 otherwise
 ```
 
-The report is always written — even on failure. CI can pick it up as an artifact.
+The JSON report is always written — even on failure. CI can pick it up as an artifact. The SARIF report is written when `--sarif <path>` is provided.
 
 ---
 

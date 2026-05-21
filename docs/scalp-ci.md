@@ -2,14 +2,14 @@
 
 **RFC v0.2 — Resolve, evaluate, block, install, audit, report — in one shot**
 
-> CI pipelines don't have time for a multi-step dance. `scalp ci` is the equivalent of `install --guarded` + `audit` + a structured report, packaged as a single command that exits 0 or 1.
+> CI pipelines don't have time for a multi-step dance. `scalp ci` is the equivalent of `install --guarded` + `audit` + a structured report (JSON + SARIF), packaged as a single command that exits 0 or 1.
 
 ---
 
 ## What it does
 
 ```bash
-scalp ci [--pm npm|pnpm|yarn|bun] [--output scalp-report.json] [--pr-context fork] [--allow-scripts]
+scalp ci [--pm npm|pnpm|yarn|bun] [--output scalp-report.json] [--pr-context fork] [--allow-scripts] [--sarif <path>]
 ```
 
 Flow, in order:
@@ -17,13 +17,13 @@ Flow, in order:
 1. Loads policy (or defaults if missing)
 2. Resolves dependencies (lockfile-only, no install)
 3. Parses the lockfile and evaluates every package against policy + trust score
-4. If any violations → writes report, exits 1 (never installs)
+4. If any violations → writes report, annotates PR (GitHub Actions), exits 1 (never installs)
 5. Installs everything
 6. Hashes each installed package (SHA-512), saves to `.scalp/lockfile.json`
 7. Audits the lockfile against node_modules (detects tampering, missing packages)
-8. Writes a structured JSON report
+8. Writes a structured JSON report (and optional SARIF 2.1.0 report)
 
-That's it. One command, one exit code, one report.
+That's it. One command, one exit code, one (or two) reports.
 
 ---
 
@@ -68,7 +68,7 @@ They share the same evaluation engine. Same trust score, same cache, same everyt
 
 ---
 
-## The report
+## The JSON report
 
 Written to `--output` (default: `.scalp/ci-report.json`). If you pass `-`, it goes to stdout.
 
@@ -101,7 +101,39 @@ The `audit` section counts three categories from the hash verification:
 | `mismatched` | On-disk hash differs from lockfile (tampered or corrupted) |
 | `missing` | Package in tree but absent from lockfile, or not installed |
 
-SARIF output is COMPLETED IN [v0.2.20](https://github.com/scal-p-labs/SCAL-P/releases/tag/v0.2.20).
+---
+
+## The SARIF report
+
+```bash
+scalp ci --sarif .scalp/report.sarif
+```
+
+Generates a SARIF 2.1.0 report alongside the JSON report. Each policy violation becomes a SARIF result with:
+
+| SARIF field | Maps from |
+|-------------|-----------|
+| `ruleId` | Normalized rule name (e.g. `require_hash`, `min_score`) |
+| `level` | `error` for most rules, `warning` for `max_depth` |
+| `message.text` | Violation reason |
+| `locations[].physicalLocation.artifactLocation.uri` | Path to the package in `node_modules/` |
+
+The `results` array is always present (even empty) to satisfy GitHub's `upload-sarif` action requirement.
+
+### GitHub Code Scanning integration
+
+```yaml
+- name: Run SCAL-P CI
+  run: scalp ci --sarif .scalp/report.sarif
+
+- name: Upload SARIF to GitHub
+  if: success() || failure()
+  uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: .scalp/report.sarif
+```
+
+PR annotations are automatically emitted via `::error::` / `::warning::` workflow commands when `GITHUB_ACTIONS=true`, adding inline annotations on the PR diff without requiring `security-events: write`.
 
 ---
 
@@ -121,7 +153,6 @@ No other exit codes. If something truly fails (can't resolve, can't install), yo
 - Does not check for new versions of packages (use `npm outdated`)
 - Does not publish reports anywhere (pipe it yourself)
 - Does not run in daemon mode or watch mode
-- Does not support SARIF yet (v0.3)
 - Does not accept npm/pnpm passthrough args (use `install --guarded` for that)
 
 ---
@@ -131,9 +162,13 @@ No other exit codes. If something truly fails (can't resolve, can't install), yo
 GitHub Actions:
 
 ```yaml
-- run: scalp ci --output ci-report.json
+- run: scalp ci --output ci-report.json --sarif .scalp/report.sarif
 - if: failure()
   run: cat ci-report.json
+- if: success() || failure()
+  uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: .scalp/report.sarif
 ```
 
 GitLab CI:
@@ -163,7 +198,9 @@ internal/cli/
 
 internal/reporter/
 ├── json.go     — Report struct, Render(), WriteFile(), AuditFromEvents()
-└── json_test.go
+├── json_test.go
+├── sarif.go    — SARIF 2.1.0 structs, known rules, RenderSarifFromViolations()
+└── sarif_test.go
 ```
 
 The `reporter` package is independent — it only depends on `policy.Violation` and `audit.Event` structs. No CLI logic leaks in.

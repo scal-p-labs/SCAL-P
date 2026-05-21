@@ -1,6 +1,6 @@
 # SCAL-P — Secure Chain Assurance Layer for Packages
 
-> Policy enforcement, dependency hashing, trust scoring, and audit for npm, pnpm, yarn, and bun.
+> Policy enforcement, dependency hashing, trust scoring, audit, and staged package verification for npm, pnpm, yarn, and bun.
 > Zero external dependencies — only the Go standard library.
 
 ```bash
@@ -9,7 +9,9 @@ scalp audit                                         # verify lockfile hashes mat
 scalp audit --report audit-report.md                # audit + Markdown report
 scalp audit --report - --artifact <f> --checksum <f> # audit + binary verify + stdout report
 scalp ci                                            # single CI command: all of the above + JSON report
+scalp ci --sarif .scalp/report.sarif                # CI + SARIF 2.1.0 report for GitHub Code Scanning
 scalp verify --artifact <file> --checksum <file>     # verify release artifact
+scalp stage verify --stage-id <pkg@version>          # verify staged npm package tarball from stdin
 ```
 
 ---
@@ -19,6 +21,8 @@ scalp verify --artifact <file> --checksum <file>     # verify release artifact
 npm/pnpm/yarn/bun run arbitrary code during install. SCAL-P flips the order: policy before trust, hash after install, audit always.
 
 v0.2 added trust scores (numeric risk dimension), pnpm, bun and yarn (Berry v2+) support, a dedicated CI command, and the ability to verify SCAL-P's own releases (dogfooding).
+
+v0.3 opens the staged packages cycle: `scalp stage verify` for pre-publish tarball verification, SARIF 2.1.0 reports for GitHub Code Scanning integration, and the foundation for provenance-based staged-only policies.
 
 ---
 
@@ -42,9 +46,11 @@ make build
 | `audit --report <path>` | Audit + generate Markdown report (use `--report -` for stdout) |
 | `audit --artifact <f> --checksum <f>` | Audit + optionally verify a binary artifact in the same run |
 | `ci` | Resolve → evaluate → block → install → audit → structured JSON report. Always blocks. |
+| `ci --sarif <path>` | CI + SARIF 2.1.0 report for GitHub Code Scanning |
 | `policy check` | Evaluate policy against resolved dependencies without installing |
 | `verify --artifact <file> --checksum <file>` | Verify release artifact SHA-512 against checksums file |
 | `checksum <files...>` | Generate SHA-512 checksums for files |
+| `stage verify --stage-id <pkg>` | Verify a staged npm package tarball from stdin |
 
 ### Audit report
 
@@ -67,22 +73,56 @@ Generates a human-readable Markdown report with:
 
 Flags:
 
-- `--report <path>` — output file path (`.md`). Use `--report -` for stdout.
+- `--report <path>` — output file path (`.md`, `.sarif`). Use `--report -` for stdout.
 - `--artifact <file>` — optional binary artifact to verify alongside packages
 - `--checksum <file>` — checksums file for binary verification
 
-The report is designed to be auditable, versionable, easy to attach in CI, easy to review in PRs, and easy to sign/attest later. Format detection by extension — `.md` today, `.json`/`.adoc` ready to add.
+The report is designed to be auditable, versionable, easy to attach in CI, easy to review in PRs, and easy to sign/attest later. Format detection by extension — `.md` today, `.sarif`/`.json`/`.adoc` ready to add.
+
+### SARIF report
+
+```bash
+scalp ci --sarif .scalp/report.sarif
+```
+
+Generates a SARIF 2.1.0 report (Static Analysis Results Interchange Format) compatible with GitHub Code Scanning. Each policy violation becomes a SARIF result with rule ID, severity level, and artifact location.
+
+The SARIF `results` array is always present — even when empty — to satisfy GitHub's `upload-sarif` action requirement.
 
 ### CI mode
 
 ```bash
-scalp ci --pr-context fork --output ci-report.json
+scalp ci --pr-context fork --output ci-report.json --sarif .scalp/report.sarif
 ```
 
 Flags:
 - `--pr-context fork` (default): forces `require_hash`, blocks install scripts
 - `--pr-context internal`: respects policy, scripts blocked unless `--allow-scripts`
 - `--output`: path to JSON report (default `.scalp/ci-report.json`)
+- `--sarif <path>`: generate SARIF 2.1.0 report for GitHub Code Scanning
+
+### Stage verify (Comming Soon in v0.3 of [scalp-action](https://github.com/scal-p-labs/scalp-action))
+
+```bash
+npm stage download <stage-id> | scalp stage verify \
+  --stage-id <package@version> \
+  [--checksum <sha512-...>] \
+  [--policy .scalp/policy.json] \
+  [--sarif <path>] \
+  [--ci]
+```
+
+Verifies a staged npm package tarball piped from `npm stage download`:
+
+| Check | Description |
+|-------|-------------|
+| **Hash verification** | Computes SHA-512 of the piped tarball and compares against `--checksum` (optional) |
+| **Package identity** | Extracts package name from `package/package.json` inside the tarball and verifies it matches `--stage-id` |
+| **Denylist** | Checks the extracted package name against policy deny rules (name + pattern) |
+| **SARIF output** | Generates a SARIF 2.1.0 report via `--sarif <path>` |
+| **Enforcement** | `--ci` blocks on violation; otherwise uses policy's `on_violation` mode |
+
+The denylist check runs against the **actual tarball contents**, not the user-supplied `--stage-id`, preventing bypass attacks where a benign stage ID is paired with a malicious tarball.
 
 ### Binary verify (dogfooding)
 
@@ -182,12 +222,12 @@ If multiple lockfiles are present (or none), `--pm` is required.
 ```
 cmd/scalp/main.go              # entrypoint → cli.Run()
 internal/
-├── cli/                       # command routing (install, audit, ci, verify, checksum)
+├── cli/                       # command routing (install, audit, ci, verify, checksum, stage)
 ├── policy/                    # policy loading, evaluation, enforcement
 ├── lockfile/                  # .scalp/lockfile.json management + hash verification
-├── hash/                      # SHA-512 hashing (directory + single file)
+├── hash/                      # SHA-512 hashing (directory, single file, raw bytes)
 ├── trust/                     # trust score engine, cache, npm API client
-├── reporter/                  # JSON + Markdown reports (CI, audit)
+├── reporter/                  # JSON, Markdown, and SARIF 2.1.0 reports
 ├── audit/                     # NDJSON audit logger
 ├── ctxutil/                   # context helpers
 ├── pkgmanager/                # PackageManager interface + registry
@@ -202,7 +242,7 @@ internal/
 
 ## Audit log
 
-`.scalp/audit.log` — NDJSON, append-only. Every install, audit, and verify produces events.
+`.scalp/audit.log` — NDJSON, append-only. Every install, audit, verify, and stage verify produces events.
 
 ---
 
@@ -218,4 +258,4 @@ internal/
 
 ---
 
-See `docs/` for detailed RFCs on trust scoring, CI mode, and binary verify.
+See `docs/` for detailed RFCs on trust scoring, CI mode, binary verify, stage verify, and SARIF reporting.
