@@ -18,7 +18,7 @@ type SarifLog struct {
 // SarifRun represents a single run of a tool.
 type SarifRun struct {
 	Tool        SarifTool         `json:"tool"`
-	Results     []SarifResult     `json:"results,omitempty"`
+	Results     []SarifResult     `json:"results"`
 	Invocations []SarifInvocation `json:"invocations,omitempty"`
 }
 
@@ -225,7 +225,7 @@ func buildResults(violations []policy.Violation, ruleIndex map[string]int) []Sar
 
 func buildResultsFromPolicy(violations []policy.Violation, ruleIndex map[string]int) []SarifResult {
 	if len(violations) == 0 {
-		return nil
+		return []SarifResult{}
 	}
 
 	results := make([]SarifResult, 0, len(violations))
