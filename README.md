@@ -103,7 +103,7 @@ Flags:
 - `--output`: path to JSON report (default `.scalp/ci-report.json`)
 - `--sarif <path>`: generate SARIF 2.1.0 report for GitHub Code Scanning
 
-### Stage verify (Comming Soon in v0.3 of [scalp-action](https://github.com/scal-p-labs/scalp-action))
+### Stage verify
 
 ```bash
 npm stage download <stage-id> | scalp stage verify \
