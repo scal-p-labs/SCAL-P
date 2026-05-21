@@ -84,6 +84,7 @@ func runAudit(ctx context.Context, args []string) error {
 			slog.Warn("flatten tree", "err", flattenErr)
 		} else {
 			scorer = trust.NewScorer(trust.DefaultCacheFile)
+			scorer.SetPM(pm.Name())
 			trustVs, tvErr := scorer.Evaluate(ctx, pol, nodes, &lf)
 			if tvErr != nil {
 				slog.Warn("trust score", "err", tvErr)
