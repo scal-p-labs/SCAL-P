@@ -218,6 +218,7 @@ func writeSarif(path string, passed bool, violations []policy.Violation) error {
 		time.Now().UTC().Format(time.RFC3339),
 		passed,
 		violations,
+		"",
 	)
 	if err != nil {
 		return fmt.Errorf("render sarif: %w", err)
