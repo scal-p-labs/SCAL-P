@@ -173,9 +173,26 @@ func annotateViolations(violations []policy.Violation) {
 			level = "warning"
 		}
 		pkg := shortPkgID(v.PackageID)
-		fmt.Printf("::%s title=SCAL-P (%s),file=package.json,line=1::[%s] %s — %s\n",
-			level, ruleID, ruleID, pkg, v.Reason)
+		title := escapeWorkflowParam(fmt.Sprintf("SCAL-P (%s)", ruleID))
+		msg := escapeWorkflowData(fmt.Sprintf("[%s] %s — %s", ruleID, pkg, v.Reason))
+		fmt.Fprintf(os.Stderr, "::%s title=%s::%s\n", level, title, msg)
 	}
+}
+
+func escapeWorkflowParam(s string) string {
+	s = strings.ReplaceAll(s, "%", "%25")
+	s = strings.ReplaceAll(s, "\n", "%0A")
+	s = strings.ReplaceAll(s, "\r", "%0D")
+	s = strings.ReplaceAll(s, ":", "%3A")
+	s = strings.ReplaceAll(s, ",", "%2C")
+	return s
+}
+
+func escapeWorkflowData(s string) string {
+	s = strings.ReplaceAll(s, "%", "%25")
+	s = strings.ReplaceAll(s, "\n", "%0A")
+	s = strings.ReplaceAll(s, "\r", "%0D")
+	return s
 }
 
 // normalizeRuleName extracts the rule name from a rule value like "require_hash:true".
@@ -187,8 +204,9 @@ func normalizeRuleName(rule string) string {
 }
 
 // shortPkgID returns the package name without version.
+// Uses LastIndexByte to handle scoped packages like "@scope/pkg@1.0.0".
 func shortPkgID(pkgID string) string {
-	if idx := strings.IndexByte(pkgID, '@'); idx != -1 {
+	if idx := strings.LastIndexByte(pkgID, '@'); idx != -1 {
 		return pkgID[:idx]
 	}
 	return pkgID
