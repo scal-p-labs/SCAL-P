@@ -206,7 +206,7 @@ Modes:
 | Staged package identity bypass | Tarball package.json extraction vs --stage-id | v0.3 |
 | Staged package denylist evasion | Denylist check against extracted tarball name | v0.3 |
 
-Not covered: typosquatting, dependency confusion, static analysis. These are v0.4+ targets.
+Not covered: typosquatting, dependency confusion, static analysis. These are v0.3+ targets.
 
 ## Threat Model
 
@@ -224,9 +224,8 @@ SCAL-P does NOT assume:
 
 ## What's next
 
-- **v0.2** — Sigstore/npm provenance integration, trust score, stricter CI mode, pnpm/yarn/bun support ✓
-- **v0.3 (current)** — SARIF 2.1.0 reports, GitHub Code Scanning integration, `scalp stage verify` for staged package tarballs, denylist bypass prevention, streaming hash verification
-- **v0.4+** — Typosquatting detection, dependency confusion, security reports, provenance-based `staged_only` policies
+- **v0.2** — Sigstore/npm provenance integration, trust score, stricter CI mode, pnpm/yarn/bun support, SARIF 2.1.0 reports, GitHub Code Scanning integration ✓
+- **v0.3 (current)** — , `scalp stage verify` for staged package tarballs ✓, denylist bypass prevention ✓, streaming hash verification ✓, Typosquatting detection, dependency confusion, security reports, provenance-based `staged_only` policies
 - **v1.0** — SCAL-P Key Registry, IDE plugin, E2E tests
 
 ## Design principles
