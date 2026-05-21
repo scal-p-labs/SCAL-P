@@ -61,8 +61,8 @@ func TestRunStageVerify_HashMismatch(t *testing.T) {
 	os.Stdin = r
 
 	go func() {
-		w.Write(tarball)
-		w.Close()
+		_, _ = w.Write(tarball)
+		_ = w.Close()
 	}()
 
 	defer func() { os.Stdin = oldStdin }()
@@ -99,8 +99,8 @@ func TestRunStageVerify_HashMatch(t *testing.T) {
 	os.Stdin = r
 
 	go func() {
-		w.Write(tarball)
-		w.Close()
+		_, _ = w.Write(tarball)
+		_ = w.Close()
 	}()
 
 	defer func() { os.Stdin = oldStdin }()
@@ -132,8 +132,8 @@ func TestRunStageVerify_Denylist(t *testing.T) {
 	os.Stdin = r
 
 	go func() {
-		w.Write(tarball)
-		w.Close()
+		_, _ = w.Write(tarball)
+		_ = w.Close()
 	}()
 
 	defer func() { os.Stdin = oldStdin }()
@@ -170,8 +170,8 @@ func TestRunStageVerify_SarifOutput(t *testing.T) {
 	os.Stdin = r
 
 	go func() {
-		w.Write(tarball)
-		w.Close()
+		_, _ = w.Write(tarball)
+		_ = w.Close()
 	}()
 
 	defer func() { os.Stdin = oldStdin }()
