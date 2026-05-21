@@ -1,19 +1,17 @@
 package trust
 
 import (
-	"bufio"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
-	"os"
+	"net/http"
 	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"scal-p/internal/ctxutil"
 	"scal-p/internal/lockfile"
@@ -26,7 +24,6 @@ const (
 	ptsMaturity     = 15
 	ptsMaxDownloads = 20
 	ptsNoCVEs       = 15
-	defaultWorkers  = 10
 )
 
 type ScoreBreakdown struct {
@@ -42,34 +39,37 @@ type PackageScore struct {
 	Breakdown ScoreBreakdown `json:"breakdown"`
 }
 
+type inflightFetch struct {
+	wg    sync.WaitGroup
+	score int
+	err   error
+}
+
 type Scorer struct {
 	cachePath string
 	apiURL    string
+	pm        string
 	auditFunc func(ctx context.Context) map[string][]string
-	workers   int
 	scores    []PackageScore
 	lastCVEs  map[string][]string
+	inflightMu sync.Mutex
+	inflight   map[string]*inflightFetch
 }
 
 func NewScorer(cachePath string) *Scorer {
 	return &Scorer{
 		cachePath: cachePath,
 		apiURL:    "https://api.npmjs.org",
-		workers:   defaultWorkers,
+		inflight:  make(map[string]*inflightFetch),
 	}
-}
-
-// SetWorkers sets the number of concurrent HTTP workers for
-// download prefetching. Default is 10. Values <= 0 reset to default.
-func (s *Scorer) SetWorkers(n int) {
-	if n <= 0 {
-		n = defaultWorkers
-	}
-	s.workers = n
 }
 
 func (s *Scorer) SetAPIURL(url string) {
 	s.apiURL = url
+}
+
+func (s *Scorer) SetPM(pm string) {
+	s.pm = pm
 }
 
 func (s *Scorer) SetAuditFunc(fn func(ctx context.Context) map[string][]string) {
@@ -84,17 +84,10 @@ func (s *Scorer) Evaluate(ctx context.Context, pol policy.Policy, nodes []pkgman
 		return nil, err
 	}
 
-	cache, err := LoadCache(s.cachePath)
-	if err != nil {
-		return nil, fmt.Errorf("load trust cache: %w", err)
-	}
-
-	s.lastCVEs = s.fetchAuditCVEs(ctx)
-	auditCVEs := s.lastCVEs
-	s.prefetchDownloads(ctx, nodes, cache)
-	s.scores = nil
-
+	// First pass: check require_hash only (no network needed).
+	// Packages that pass become candidates for trust scoring.
 	var violations []policy.Violation
+	var scoreNodes []pkgmanager.PackageNode
 	for _, node := range nodes {
 		key := fmt.Sprintf("%s@%s", node.Name, node.Version)
 
@@ -107,57 +100,64 @@ func (s *Scorer) Evaluate(ctx context.Context, pol policy.Policy, nodes []pkgman
 			continue
 		}
 
-		score := s.computeScore(ctx, node, lf, cache, auditCVEs)
+		scoreNodes = append(scoreNodes, node)
+	}
 
-		s.scores = append(s.scores, PackageScore{
-			PackageID: key,
-			Total:     score.total,
-			Breakdown: ScoreBreakdown{
-				HashVerified: score.hash,
-				Maturity:     score.maturity,
-				Downloads:    score.downloads,
-				NoCVEs:       score.noCVEs,
-			},
-		})
+	// Second pass: trust scoring for packages that passed require_hash.
+	if pol.Trust.MinScore > 0 && len(scoreNodes) > 0 {
+		cache, err := LoadCache(s.cachePath)
+		if err != nil {
+			return nil, fmt.Errorf("load trust cache: %w", err)
+		}
 
-		if score.total < pol.Trust.MinScore {
-			violations = append(violations, policy.Violation{
+		s.lastCVEs = s.fetchAuditCVEs(ctx)
+		auditCVEs := s.lastCVEs
+		s.scores = nil
+
+		for _, node := range scoreNodes {
+			key := fmt.Sprintf("%s@%s", node.Name, node.Version)
+
+			hash := scoreHash(node, lf)
+			maturity := ScoreMaturity(node.Version)
+			noCVEs := scoreCVEs(node.Name, node.Version, auditCVEs, cache)
+
+			// Early skip: if max possible score is below min_score,
+			// don't bother fetching download data.
+			maxWithoutDownloads := hash + maturity + noCVEs
+			var downloads int
+			if maxWithoutDownloads+ptsMaxDownloads >= pol.Trust.MinScore {
+				downloads = s.scoreDownloadsCached(ctx, node.Name, cache)
+			}
+
+			total := maxWithoutDownloads + downloads
+
+			s.scores = append(s.scores, PackageScore{
 				PackageID: key,
-				Reason: fmt.Sprintf("trust_score: %d/%d (hash:%d, maturity:%d, dl:%d, cves:%d)",
-					score.total, pol.Trust.MinScore, score.hash, score.maturity, score.downloads, score.noCVEs),
-				Rule: fmt.Sprintf("min_score:%d", pol.Trust.MinScore),
+				Total:     total,
+				Breakdown: ScoreBreakdown{
+					HashVerified: hash,
+					Maturity:     maturity,
+					Downloads:    downloads,
+					NoCVEs:       noCVEs,
+				},
 			})
+
+			if total < pol.Trust.MinScore {
+				violations = append(violations, policy.Violation{
+					PackageID: key,
+					Reason: fmt.Sprintf("trust_score: %d/%d (hash:%d, maturity:%d, dl:%d, cves:%d)",
+						total, pol.Trust.MinScore, hash, maturity, downloads, noCVEs),
+					Rule: fmt.Sprintf("min_score:%d", pol.Trust.MinScore),
+				})
+			}
+		}
+
+		if err := cache.Save(); err != nil {
+			return nil, fmt.Errorf("save trust cache: %w", err)
 		}
 	}
 
-	if err := cache.Save(); err != nil {
-		return nil, fmt.Errorf("save trust cache: %w", err)
-	}
-
 	return violations, nil
-}
-
-type computedScore struct {
-	total     int
-	hash      int
-	maturity  int
-	downloads int
-	noCVEs    int
-}
-
-func (s *Scorer) computeScore(ctx context.Context, node pkgmanager.PackageNode, lf *lockfile.Lockfile, cache *TrustCache, auditCVEs map[string][]string) computedScore {
-	hash := scoreHash(node, lf)
-	maturity := ScoreMaturity(node.Version)
-	downloads := s.scoreDownloadsCached(ctx, node.Name, cache)
-	noCVEs := scoreCVEs(node.Name, node.Version, auditCVEs, cache)
-
-	return computedScore{
-		total:     hash + maturity + downloads + noCVEs,
-		hash:      hash,
-		maturity:  maturity,
-		downloads: downloads,
-		noCVEs:    noCVEs,
-	}
 }
 
 func hasLockfileHash(node pkgmanager.PackageNode, lf *lockfile.Lockfile) bool {
@@ -202,48 +202,51 @@ func parseVersion(v string) (major, minor, patch int) {
 	return
 }
 
-func (s *Scorer) prefetchDownloads(ctx context.Context, nodes []pkgmanager.PackageNode, cache *TrustCache) {
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, s.workers)
-
-	for _, node := range nodes {
-		entry, ok := cache.Get(node.Name)
-		if ok && !IsExpired(entry, DefaultTTL) {
-			continue
-		}
-
-		wg.Add(1)
-		go func(name string) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			downloads, err := s.fetchWeeklyDownloads(ctx, name)
-			if err != nil {
-				return
-			}
-			cache.SetDownloads(name, downloads)
-		}(node.Name)
-	}
-	wg.Wait()
-}
-
+// scoreDownloadsCached returns the download score for a package name.
+// It uses a dedup mechanism so concurrent calls for the same name
+// share a single HTTP fetch.
 func (s *Scorer) scoreDownloadsCached(ctx context.Context, pkgName string, cache *TrustCache) int {
 	entry, ok := cache.Get(pkgName)
 	if ok && !IsExpired(entry, DefaultTTL) {
 		return ScoreDownloadsByCount(entry.WeeklyDownloads)
 	}
 
-	downloads, err := s.fetchWeeklyDownloads(ctx, pkgName)
-	if err != nil {
-		if ok {
-			return ScoreDownloadsByCount(entry.WeeklyDownloads)
+	// Dedup concurrent fetches for the same package name.
+	s.inflightMu.Lock()
+	if inf, exists := s.inflight[pkgName]; exists {
+		s.inflightMu.Unlock()
+		inf.wg.Wait()
+		if inf.err == nil {
+			return inf.score
 		}
-		return ptsMaxDownloads / 2
+		// Inflight fetch failed — fall through to try again.
+	} else {
+		inf = &inflightFetch{}
+		inf.wg.Add(1)
+		s.inflight[pkgName] = inf
+		s.inflightMu.Unlock()
+
+		go func() {
+			defer inf.wg.Done()
+			downloads, err := s.fetchWeeklyDownloads(ctx, pkgName)
+			inf.err = err
+			if err == nil {
+				inf.score = ScoreDownloadsByCount(downloads)
+				cache.SetDownloads(pkgName, downloads)
+			}
+		}()
+
+		inf.wg.Wait()
+		if inf.err == nil {
+			return inf.score
+		}
 	}
 
-	cache.SetDownloads(pkgName, downloads)
-	return ScoreDownloadsByCount(downloads)
+	// All fetch attempts failed.
+	if ok {
+		return ScoreDownloadsByCount(entry.WeeklyDownloads)
+	}
+	return ptsMaxDownloads / 2
 }
 
 // FetchDownloadsFunc is the signature for downloading weekly counts.
@@ -251,56 +254,39 @@ type FetchDownloadsFunc func(ctx context.Context, apiURL, pkgName string) (int, 
 
 var fetchDownloads FetchDownloadsFunc = defaultFetchDownloads
 
+var downloadClient = &http.Client{
+	Transport: &http.Transport{
+		MaxIdleConns:        20,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     30 * time.Second,
+		DialContext:         (&net.Dialer{Timeout: 3 * time.Second}).DialContext,
+		TLSHandshakeTimeout: 3 * time.Second,
+	},
+	Timeout: 10 * time.Second,
+}
+
 func defaultFetchDownloads(ctx context.Context, apiURL, pkgName string) (int, error) {
-	host := strings.TrimPrefix(apiURL, "https://")
-	path := "/downloads/point/last-week/" + pkgName
-
-	dialer := net.Dialer{}
-	conn, err := tls.DialWithDialer(&dialer, "tcp", host+":443", &tls.Config{})
+	u := apiURL + "/downloads/point/last-week/" + pkgName
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 	if err != nil {
-		return 0, fmt.Errorf("connect: %w", err)
+		return 0, fmt.Errorf("create request: %w", err)
 	}
-	defer conn.Close() //nolint:errcheck
+	req.Header.Set("Accept", "application/json")
 
-	if deadline, ok := ctx.Deadline(); ok {
-		conn.SetDeadline(deadline) //nolint:errcheck
-	}
-
-	req := fmt.Sprintf("GET %s HTTP/1.1\r\nHost: %s\r\nAccept: application/json\r\nConnection: close\r\n\r\n", path, host)
-	if _, err := fmt.Fprint(conn, req); err != nil {
-		return 0, fmt.Errorf("send request: %w", err)
-	}
-
-	br := bufio.NewReader(conn)
-
-	statusLine, err := br.ReadString('\n')
+	resp, err := downloadClient.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("read status: %w", err)
+		return 0, fmt.Errorf("fetch: %w", err)
 	}
-	parts := strings.SplitN(statusLine, " ", 3)
-	if len(parts) < 2 || parts[1] != "200" {
-		return 0, fmt.Errorf("unexpected status: %s", strings.TrimSpace(statusLine))
-	}
+	defer resp.Body.Close()
 
-	for {
-		line, err := br.ReadString('\n')
-		if err != nil {
-			return 0, fmt.Errorf("read header: %w", err)
-		}
-		if line == "\r\n" || line == "\n" {
-			break
-		}
-	}
-
-	body, err := io.ReadAll(br)
-	if err != nil {
-		return 0, fmt.Errorf("read body: %w", err)
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("unexpected status: %d", resp.StatusCode)
 	}
 
 	var dl struct {
 		Downloads int `json:"downloads"`
 	}
-	if err := json.Unmarshal(body, &dl); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&dl); err != nil {
 		return 0, fmt.Errorf("parse response: %w", err)
 	}
 
@@ -335,8 +321,12 @@ func ScoreDownloadsByCount(n int) int {
 }
 
 func scoreCVEs(pkgName, version string, auditCVEs map[string][]string, cache *TrustCache) int {
-	cves, hasAudit := auditCVEs[pkgName]
-	if hasAudit {
+	if auditCVEs != nil {
+		cves, ok := auditCVEs[pkgName]
+		if !ok {
+			cache.SetVersionCVEs(pkgName, version, nil)
+			return ptsNoCVEs
+		}
 		if len(cves) > 0 {
 			cache.SetVersionCVEs(pkgName, version, cves)
 			return 0
@@ -378,15 +368,31 @@ func (s *Scorer) fetchAuditCVEs(ctx context.Context) map[string][]string {
 	if s.auditFunc != nil {
 		return s.auditFunc(ctx)
 	}
-	cmd := exec.CommandContext(ctx, "npm", "audit", "--json")
-	cmd.Stderr = os.Stderr
+
+	switch s.pm {
+	case "pnpm":
+		return runAudit(ctx, "pnpm", parsePnpmAuditJSON, "audit", "--json")
+	case "yarn":
+		return runAudit(ctx, "yarn", parseNpmAuditJSON, "npm", "audit", "--json")
+	case "bun":
+		return nil
+	default:
+		return runAudit(ctx, "npm", parseNpmAuditJSON, "audit", "--json")
+	}
+}
+
+func runAudit(ctx context.Context, name string, parse func([]byte) map[string][]string, arg ...string) map[string][]string {
+	cmd := exec.CommandContext(ctx, name, arg...)
 	output, err := cmd.Output()
 	if err != nil {
-		slog.Debug("npm audit failed — CVE data unavailable", "err", err)
-		return nil
+		// pnpm audit --json exits 1 when vulnerabilities are found.
+		// The output is still valid JSON — parse it unless output is empty.
+		if len(output) == 0 {
+			slog.Debug("audit failed — CVE data unavailable", "pm", name, "err", err)
+			return nil
+		}
 	}
-
-	return parseNpmAuditJSON(output)
+	return parse(output)
 }
 
 type npmAuditVulnerability struct {
@@ -406,6 +412,24 @@ func parseNpmAuditJSON(data []byte) map[string][]string {
 	result := make(map[string][]string, len(resp.Vulnerabilities))
 	for name, vuln := range resp.Vulnerabilities {
 		result[name] = append(result[name], vuln.Severity)
+	}
+	return result
+}
+
+func parsePnpmAuditJSON(data []byte) map[string][]string {
+	var resp struct {
+		Advisories map[string]struct {
+			ModuleName string `json:"module_name"`
+			Severity   string `json:"severity"`
+		} `json:"advisories"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil
+	}
+	result := make(map[string][]string, len(resp.Advisories))
+	for _, adv := range resp.Advisories {
+		name := adv.ModuleName
+		result[name] = append(result[name], adv.Severity)
 	}
 	return result
 }

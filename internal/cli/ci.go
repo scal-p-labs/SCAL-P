@@ -81,6 +81,7 @@ func runCi(ctx context.Context, args []string) error {
 			slog.Warn("trust score: no lockfile, using offline-only factors", "err", lfErr)
 		} else {
 			scorer := trust.NewScorer(trust.DefaultCacheFile)
+			scorer.SetPM(pm.Name())
 			trustVs, tvErr := scorer.Evaluate(ctx, pol, nodes, &lf)
 			if tvErr != nil {
 				slog.Warn("trust score", "err", tvErr)

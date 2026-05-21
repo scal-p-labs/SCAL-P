@@ -69,6 +69,7 @@ func runPolicyCheck(ctx context.Context, args []string) error {
 		lf, lfErr := lockfile.Load(ctx, ".scalp/lockfile.json")
 		if lfErr == nil {
 			scorer := trust.NewScorer(trust.DefaultCacheFile)
+			scorer.SetPM(pm.Name())
 			trustVs, tvErr := scorer.Evaluate(ctx, pol, nodes, &lf)
 			if tvErr != nil {
 				slog.Warn("trust score", "err", tvErr)

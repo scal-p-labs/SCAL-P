@@ -77,34 +77,15 @@ type pnpmDependencyRef struct {
 }
 
 // GetTree returns pnpm's dependency tree by running pnpm ls --json --depth Infinity.
+// It uses the CLI rather than parsing pnpm-lock.yaml directly because the CLI
+// returns real filesystem paths (including .pnpm store paths), which are needed
+// by SyncWithTree to locate packages on disk for hash computation.
 func (a *Adapter) GetTree(ctx context.Context) (pkgmanager.DependencyTree, error) {
 	if err := ctxutil.Check(ctx); err != nil {
 		return pkgmanager.DependencyTree{}, err
 	}
 
-	// Fast path: parse pnpm-lock.yaml directly. This avoids the extremely
-	// slow pnpm ls --depth Infinity (which can take minutes on large projects).
-	nodes, err := ParsePnpmLockfile(ctx)
-	if err != nil {
-		// Fall back to pnpm ls --json --depth Infinity if lockfile parsing
-		// fails (e.g., file not found, unsupported format).
-		return a.getTreeViaLs(ctx)
-	}
-
-	deps := make(map[string]pkgmanager.DependencyRef, len(nodes))
-	for _, node := range nodes {
-		deps[node.Name] = pkgmanager.DependencyRef{
-			Version:   node.Version,
-			Resolved:  node.Resolved,
-			Integrity: node.Integrity,
-			Path:      "node_modules/" + node.Name,
-		}
-	}
-	return pkgmanager.DependencyTree{
-		Name:         "pnpm-project",
-		Version:      "0.0",
-		Dependencies: deps,
-	}, nil
+	return a.getTreeViaLs(ctx)
 }
 
 func (a *Adapter) getTreeViaLs(ctx context.Context) (pkgmanager.DependencyTree, error) {
@@ -446,29 +427,50 @@ func countIndent(line string) int {
 // parseLockfileKey parses a package key from pnpm-lock.yaml into name and version.
 //
 // Key formats:
-//   - /lodash/4.17.21         → name=lodash, version=4.17.21
-//   - /@babel/code-frame/7.24.7 → name=@babel/code-frame, version=7.24.7
-//   - /lodash@4.17.21         → name=lodash, version=4.17.21
-//   - /@scope%2Fname/1.0.0    → name=@scope/name, version=1.0.0
+//   - /lodash/4.17.21              → name=lodash, version=4.17.21
+//   - /@babel/code-frame/7.24.7    → name=@babel/code-frame, version=7.24.7
+//   - /lodash@4.17.21              → name=lodash, version=4.17.21
+//   - /@scope%2Fname/1.0.0         → name=@scope/name, version=1.0.0
+//   - lodash@4.17.21               → name=lodash, version=4.17.21  (pnpm v9+ @-format)
+//   - @scope/name@1.0.0            → name=@scope/name, version=1.0.0  (pnpm v9+ scoped)
 func parseLockfileKey(key string) (*lockfilePkgEntry, error) {
-	key = strings.TrimPrefix(key, "/")
 	if key == "" {
 		return nil, fmt.Errorf("empty package key")
 	}
 
-	splitAt := strings.LastIndex(key, "/")
-	if splitAt == -1 {
-		splitAt = strings.LastIndex(key, "@")
-	}
-	if splitAt == -1 || splitAt == 0 || splitAt == len(key)-1 {
-		return nil, fmt.Errorf("malformed package key %q", key)
+	// Strip YAML quoting (single or double) around the key.
+	// PNPM v9+ uses quoted keys when they contain @, e.g. '@scope/name@1.0.0'.
+	if (len(key) >= 2 && key[0] == '\'' && key[len(key)-1] == '\'') ||
+		(key[0] == '"' && key[len(key)-1] == '"') {
+		key = key[1 : len(key)-1]
 	}
 
-	name := key[:splitAt]
-	version := key[splitAt+1:]
+	var name, version string
 
-	if name == "" || version == "" {
-		return nil, fmt.Errorf("empty name or version in package key %q", key)
+	if strings.HasPrefix(key, "/") {
+		// Legacy /-separated format: /name/version or /@scope/name/version
+		key = strings.TrimPrefix(key, "/")
+		if key == "" {
+			return nil, fmt.Errorf("empty package key")
+		}
+		splitAt := strings.LastIndex(key, "/")
+		if splitAt == -1 {
+			// /-prefix with @-separator: /name@version or /@scope/name@version
+			splitAt = strings.LastIndex(key, "@")
+		}
+		if splitAt == -1 || splitAt == 0 || splitAt == len(key)-1 {
+			return nil, fmt.Errorf("malformed package key %q", key)
+		}
+		name = key[:splitAt]
+		version = key[splitAt+1:]
+	} else {
+		// @-separated format (pnpm v9+): name@version or @scope/name@version
+		splitAt := strings.LastIndex(key, "@")
+		if splitAt <= 0 || splitAt >= len(key)-1 {
+			return nil, fmt.Errorf("malformed package key %q", key)
+		}
+		name = key[:splitAt]
+		version = key[splitAt+1:]
 	}
 
 	name = strings.ReplaceAll(name, "%2f", "/")

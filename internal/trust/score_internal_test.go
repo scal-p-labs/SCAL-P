@@ -207,63 +207,33 @@ func TestScoreCVEs_direct(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────
-// computeScore
+// scoreDownloadsCached
 // ──────────────────────────────────────────────
 
-func TestComputeScore_direct(t *testing.T) {
+func TestScoreDownloadsCached_hit(t *testing.T) {
 	dir := t.TempDir()
 	cachePath := filepath.Join(dir, "trust.json")
 	s := NewScorer(cachePath)
-
-	restore := SetFetchDownloads(func(ctx context.Context, _, _ string) (int, error) {
-		return 50000, nil
-	})
-	defer restore()
 
 	cache, err := LoadCache(cachePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cache.Set("lodash", CacheEntry{
-		WeeklyDownloads: 50000,
-		CVEs:            nil,
-	})
+	cache.SetDownloads("lodash", 50000)
 
-	lf := &lockfile.Lockfile{
-		Packages: map[string]lockfile.LockEntry{
-			"lodash@4.17.21": {Integrity: "sha512-abc"},
-		},
-	}
-	node := pkgmanager.PackageNode{Name: "lodash", Version: "4.17.21"}
-
-	cs := s.computeScore(context.Background(), node, lf, cache, nil)
-
-	if cs.hash != ptsHashVerified {
-		t.Errorf("hash: expected %d, got %d", ptsHashVerified, cs.hash)
-	}
-	if cs.maturity != ptsMaturity {
-		t.Errorf("maturity: expected %d, got %d", ptsMaturity, cs.maturity)
-	}
-	if cs.downloads != 15 {
-		t.Errorf("downloads: expected 15 (50000 dl), got %d", cs.downloads)
-	}
-	if cs.noCVEs != ptsNoCVEs {
-		t.Errorf("noCVEs: expected %d, got %d", ptsNoCVEs, cs.noCVEs)
-	}
-
-	expected := ptsHashVerified + ptsMaturity + 15 + ptsNoCVEs
-	if cs.total != expected {
-		t.Errorf("total: expected %d, got %d", expected, cs.total)
+	got := s.scoreDownloadsCached(context.Background(), "lodash", cache)
+	if want := ScoreDownloadsByCount(50000); got != want {
+		t.Errorf("scoreDownloadsCached = %d, want %d", got, want)
 	}
 }
 
-func TestComputeScore_downloadsCachedFallback(t *testing.T) {
+func TestScoreDownloadsCached_fallbackOnFetchFail(t *testing.T) {
 	dir := t.TempDir()
 	cachePath := filepath.Join(dir, "trust.json")
 	s := NewScorer(cachePath)
 
 	restore := SetFetchDownloads(func(ctx context.Context, _, _ string) (int, error) {
-		return 0, os.ErrClosed // simulate fetch failure
+		return 0, os.ErrClosed
 	})
 	defer restore()
 
@@ -276,11 +246,30 @@ func TestComputeScore_downloadsCachedFallback(t *testing.T) {
 		FetchedAt:       "2026-01-01T00:00:00Z",
 	})
 
-	node := pkgmanager.PackageNode{Name: "lodash", Version: "1.0.0"}
-	cs := s.computeScore(context.Background(), node, nil, cache, nil)
+	// Cache entry exists but is expired; fetch fails → fallback to stale value.
+	got := s.scoreDownloadsCached(context.Background(), "lodash", cache)
+	if want := ScoreDownloadsByCount(50000); got != want {
+		t.Errorf("scoreDownloadsCached = %d, want %d", got, want)
+	}
+}
 
-	// fetch fails but cache has entry → fallback to cached downloads
-	if cs.downloads != 15 {
-		t.Errorf("downloads: expected 15 (cached 50000), got %d", cs.downloads)
+func TestScoreDownloadsCached_halfOnFetchFailNoCache(t *testing.T) {
+	dir := t.TempDir()
+	cachePath := filepath.Join(dir, "trust.json")
+	s := NewScorer(cachePath)
+
+	restore := SetFetchDownloads(func(ctx context.Context, _, _ string) (int, error) {
+		return 0, os.ErrClosed
+	})
+	defer restore()
+
+	cache, err := LoadCache(cachePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := s.scoreDownloadsCached(context.Background(), "newpkg", cache)
+	if want := ptsMaxDownloads / 2; got != want {
+		t.Errorf("scoreDownloadsCached = %d, want %d", got, want)
 	}
 }
