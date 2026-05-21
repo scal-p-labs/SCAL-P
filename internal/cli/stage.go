@@ -1,7 +1,12 @@
 package cli
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
+	"crypto/sha512"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -10,7 +15,6 @@ import (
 	"time"
 
 	"scal-p/internal/audit"
-	"scal-p/internal/hash"
 	"scal-p/internal/policy"
 	"scal-p/internal/reporter"
 	"scal-p/internal/version"
@@ -49,20 +53,29 @@ func runStageVerify(ctx context.Context, args []string) error {
 		return err
 	}
 
+	auditLogger := audit.NewLogger(".scalp/audit.log")
+	defer func() {
+		if err := auditLogger.Close(); err != nil {
+			slog.Warn("closing audit log", "err", err)
+		}
+	}()
+
 	if polInfo.MissingPolicy {
 		slog.Warn("policy not found; allowing with audit")
+		if err := auditLogger.Log(ctx, []audit.Event{policyMissingEvent()}); err != nil {
+			slog.Warn("logging audit events", "err", err)
+		}
 	}
 
-	tarballData, err := io.ReadAll(os.Stdin)
+	h := sha512.New()
+	tee := io.TeeReader(os.Stdin, h)
+
+	tarPkgName, err := extractPkgNameFromTarball(tee)
 	if err != nil {
-		return fmt.Errorf("read tarball from stdin: %w", err)
+		return fmt.Errorf("read tarball: %w", err)
 	}
 
-	if len(tarballData) == 0 {
-		return fmt.Errorf("empty tarball from stdin — pipe npm stage download <stage-id> | scalp stage verify --stage-id <pkg>")
-	}
-
-	actualHash := hash.Bytes(tarballData)
+	actualHash := "sha512-" + base64.StdEncoding.EncodeToString(h.Sum(nil))
 
 	var violations []policy.Violation
 
@@ -80,20 +93,26 @@ func runStageVerify(ctx context.Context, args []string) error {
 		slog.Info("no --checksum provided; skipping hash verification", "stage_id", *stageID, "hash", actualHash)
 	}
 
-	if denylistCheck(pol, *stageID) {
+	expectedName := stagePkgName(*stageID)
+	if tarPkgName != "" && !strings.EqualFold(tarPkgName, expectedName) {
+		violations = append(violations, policy.Violation{
+			PackageID: *stageID,
+			Reason:    fmt.Sprintf("stage_id_mismatch: --stage-id name %q does not match tarball package name %q", expectedName, tarPkgName),
+			Rule:      "stage_verify",
+		})
+	}
+
+	denyID := *stageID
+	if tarPkgName != "" {
+		denyID = tarPkgName
+	}
+	if denylistCheck(pol, denyID) {
 		violations = append(violations, policy.Violation{
 			PackageID: *stageID,
 			Reason:    "package matched deny rule",
 			Rule:      "denylist",
 		})
 	}
-
-	auditLogger := audit.NewLogger(".scalp/audit.log")
-	defer func() {
-		if err := auditLogger.Close(); err != nil {
-			slog.Warn("closing audit log", "err", err)
-		}
-	}()
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	passed := len(violations) == 0
@@ -111,6 +130,7 @@ func runStageVerify(ctx context.Context, args []string) error {
 			now,
 			passed,
 			violations,
+			*stageID,
 		)
 		if err != nil {
 			slog.Warn("render sarif", "err", err)
@@ -131,6 +151,40 @@ func runStageVerify(ctx context.Context, args []string) error {
 	return nil
 }
 
+func extractPkgNameFromTarball(r io.Reader) (string, error) {
+	gzr, err := gzip.NewReader(r)
+	if err != nil {
+		return "", fmt.Errorf("decompress tarball: %w", err)
+	}
+	defer func() { _ = gzr.Close() }()
+
+	tr := tar.NewReader(gzr)
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", fmt.Errorf("read tar entry: %w", err)
+		}
+		if strings.HasSuffix(header.Name, "/package.json") || header.Name == "package/package.json" {
+			data, err := io.ReadAll(tr)
+			if err != nil {
+				return "", fmt.Errorf("read package.json: %w", err)
+			}
+			var meta struct {
+				Name string `json:"name"`
+			}
+			if err := json.Unmarshal(data, &meta); err != nil {
+				return "", fmt.Errorf("parse package.json: %w", err)
+			}
+			return meta.Name, nil
+		}
+	}
+
+	return "", nil
+}
+
 func denylistCheck(pol policy.Policy, stageID string) bool {
 	pkgName := stagePkgName(stageID)
 	for _, rule := range pol.Packages.Deny {
@@ -144,7 +198,6 @@ func denylistCheck(pol policy.Policy, stageID string) bool {
 	return false
 }
 
-// stagePkgName extracts the package name from a stage ID like "lodash@4.17.21-stage.1".
 func stagePkgName(stageID string) string {
 	if idx := strings.LastIndexByte(stageID, '@'); idx != -1 {
 		return stageID[:idx]
@@ -152,9 +205,10 @@ func stagePkgName(stageID string) string {
 	return stageID
 }
 
-// patternMatch checks if a package name matches a pattern rule.
-// Supports * (wildcard), @scope/* (scope matching), and *substr* (contains).
 func patternMatch(pattern, pkgName string) bool {
+	pattern = strings.ToLower(pattern)
+	pkgName = strings.ToLower(pkgName)
+
 	if pattern == "*" {
 		return true
 	}

@@ -72,3 +72,48 @@ func TestFile(t *testing.T) {
 		}
 	})
 }
+
+func TestBytes(t *testing.T) {
+	t.Run("known content", func(t *testing.T) {
+		h := hash.Bytes([]byte("hello"))
+		if !strings.HasPrefix(h, "sha512-") {
+			t.Errorf("expected sha512- prefix, got %s", h)
+		}
+		if len(h) <= 8 {
+			t.Errorf("hash too short: %s", h)
+		}
+	})
+
+	t.Run("matches File", func(t *testing.T) {
+		dir := t.TempDir()
+		path := dir + "/test.bin"
+		data := []byte("same content for both")
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		h1 := hash.Bytes(data)
+		h2, err := hash.File(context.Background(), path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if h1 != h2 {
+			t.Errorf("Bytes() = %s, File() = %s, expected equal", h1, h2)
+		}
+	})
+
+	t.Run("empty", func(t *testing.T) {
+		h := hash.Bytes([]byte{})
+		if !strings.HasPrefix(h, "sha512-") {
+			t.Errorf("expected sha512- prefix, got %s", h)
+		}
+	})
+
+	t.Run("deterministic", func(t *testing.T) {
+		h1 := hash.Bytes([]byte("deterministic-test"))
+		h2 := hash.Bytes([]byte("deterministic-test"))
+		if h1 != h2 {
+			t.Errorf("expected deterministic hash, got %s vs %s", h1, h2)
+		}
+	})
+}

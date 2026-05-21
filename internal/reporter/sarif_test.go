@@ -115,7 +115,7 @@ func TestRenderSarifFromViolations(t *testing.T) {
 		{PackageID: "is-number@7.0.0", Reason: "hash_required", Rule: "require_hash:true"},
 	}
 
-	raw, err := RenderSarifFromViolations("v0.2.20", "2026-05-20T17:00:00Z", false, violations)
+	raw, err := RenderSarifFromViolations("v0.2.20", "2026-05-20T17:00:00Z", false, violations, "")
 	if err != nil {
 		t.Fatalf("RenderSarifFromViolations() error = %v", err)
 	}

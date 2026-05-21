@@ -8,26 +8,22 @@ import (
 	"scal-p/internal/policy"
 )
 
-// SarifLog is the top-level SARIF document structure.
 type SarifLog struct {
 	Schema  string     `json:"$schema"`
 	Version string     `json:"version"`
 	Runs    []SarifRun `json:"runs"`
 }
 
-// SarifRun represents a single run of a tool.
 type SarifRun struct {
 	Tool        SarifTool         `json:"tool"`
 	Results     []SarifResult     `json:"results"`
 	Invocations []SarifInvocation `json:"invocations,omitempty"`
 }
 
-// SarifTool describes the analysis tool.
 type SarifTool struct {
 	Driver SarifDriver `json:"driver"`
 }
 
-// SarifDriver describes the tool driver.
 type SarifDriver struct {
 	Name           string      `json:"name"`
 	Version        string      `json:"version,omitempty"`
@@ -35,7 +31,6 @@ type SarifDriver struct {
 	Rules          []SarifRule `json:"rules,omitempty"`
 }
 
-// SarifRule describes a rule used by the tool.
 type SarifRule struct {
 	ID               string            `json:"id"`
 	ShortDescription SarifMessage      `json:"shortDescription"`
@@ -43,12 +38,10 @@ type SarifRule struct {
 	Properties       map[string]string `json:"properties,omitempty"`
 }
 
-// SarifMessage is a text message in SARIF.
 type SarifMessage struct {
 	Text string `json:"text"`
 }
 
-// SarifResult represents a single result (violation) found by the tool.
 type SarifResult struct {
 	RuleID    string          `json:"ruleId"`
 	RuleIndex int             `json:"ruleIndex"`
@@ -57,22 +50,18 @@ type SarifResult struct {
 	Locations []SarifLocation `json:"locations"`
 }
 
-// SarifLocation describes where a result was found.
 type SarifLocation struct {
 	PhysicalLocation SarifPhysicalLocation `json:"physicalLocation"`
 }
 
-// SarifPhysicalLocation describes a physical file location.
 type SarifPhysicalLocation struct {
 	ArtifactLocation SarifArtifactLocation `json:"artifactLocation"`
 }
 
-// SarifArtifactLocation describes a file artifact.
 type SarifArtifactLocation struct {
 	URI string `json:"uri"`
 }
 
-// SarifInvocation records the invocation of the tool.
 type SarifInvocation struct {
 	EndTimeUtc          string `json:"endTimeUtc,omitempty"`
 	ExecutionSuccessful bool   `json:"executionSuccessful"`
@@ -84,14 +73,12 @@ const (
 	helpURI      = "https://github.com/scal-p-labs/SCAL-P"
 )
 
-// ruleInfo describes a SARIF rule definition.
 type ruleInfo struct {
 	id          string
 	description string
 	level       string
 }
 
-// knownRules maps normalized rule IDs to their metadata.
 var knownRules = map[string]ruleInfo{
 	"require_hash":   {id: "require_hash", description: "Package hash is required but missing from the lockfile", level: "error"},
 	"min_score":      {id: "min_score", description: "Package trust score is below the minimum threshold", level: "error"},
@@ -105,7 +92,6 @@ var knownRules = map[string]ruleInfo{
 	"stage_verify":   {id: "stage_verify", description: "Staged package tarball verification failed", level: "error"},
 }
 
-// RenderSarif produces a SARIF report from audit data.
 func RenderSarif(data AuditData) ([]byte, error) {
 	rules, ruleIndex := buildRules(data.Violations)
 	results := buildResults(data.Violations, ruleIndex)
@@ -134,16 +120,15 @@ func RenderSarif(data AuditData) ([]byte, error) {
 	return json.MarshalIndent(log, "", "  ")
 }
 
-// RenderSarifFromViolations produces a SARIF report directly from violations
-// and events, used by the CI command.
 func RenderSarifFromViolations(
 	version string,
 	timestamp string,
 	passed bool,
 	violations []policy.Violation,
+	artifactURI string,
 ) ([]byte, error) {
 	rules, ruleIndex := buildRulesFromPolicy(violations)
-	results := buildResultsFromPolicy(violations, ruleIndex)
+	results := buildResultsFromPolicy(violations, ruleIndex, artifactURI)
 
 	log := SarifLog{
 		Schema:  sarifSchema,
@@ -168,7 +153,6 @@ func RenderSarifFromViolations(
 	return json.MarshalIndent(log, "", "  ")
 }
 
-// normalizeRuleID extracts the rule type from a Rule field like "require_hash:true" → "require_hash".
 func normalizeRuleID(rule string) string {
 	if idx := strings.IndexByte(rule, ':'); idx != -1 {
 		return rule[:idx]
@@ -181,7 +165,6 @@ func normalizeRuleID(rule string) string {
 	return rule
 }
 
-// ruleLevel returns the SARIF severity level for a given rule ID.
 func ruleLevel(ruleID string) string {
 	if info, ok := knownRules[ruleID]; ok {
 		return info.level
@@ -221,10 +204,10 @@ func buildRulesFromPolicy(violations []policy.Violation) ([]SarifRule, map[strin
 }
 
 func buildResults(violations []policy.Violation, ruleIndex map[string]int) []SarifResult {
-	return buildResultsFromPolicy(violations, ruleIndex)
+	return buildResultsFromPolicy(violations, ruleIndex, "")
 }
 
-func buildResultsFromPolicy(violations []policy.Violation, ruleIndex map[string]int) []SarifResult {
+func buildResultsFromPolicy(violations []policy.Violation, ruleIndex map[string]int, artifactURI string) []SarifResult {
 	if len(violations) == 0 {
 		return []SarifResult{}
 	}
@@ -237,6 +220,11 @@ func buildResultsFromPolicy(violations []policy.Violation, ruleIndex map[string]
 		pkgName := packageName(v.PackageID)
 		level := ruleLevel(rid)
 
+		uri := fmt.Sprintf("node_modules/%s", pkgName)
+		if artifactURI != "" {
+			uri = fmt.Sprintf("%s/%s", artifactURI, pkgName)
+		}
+
 		results = append(results, SarifResult{
 			RuleID:    rid,
 			RuleIndex: idx,
@@ -245,7 +233,7 @@ func buildResultsFromPolicy(violations []policy.Violation, ruleIndex map[string]
 			Locations: []SarifLocation{{
 				PhysicalLocation: SarifPhysicalLocation{
 					ArtifactLocation: SarifArtifactLocation{
-						URI: fmt.Sprintf("node_modules/%s", pkgName),
+						URI: uri,
 					},
 				},
 			}},
@@ -255,7 +243,6 @@ func buildResultsFromPolicy(violations []policy.Violation, ruleIndex map[string]
 	return results
 }
 
-// packageName extracts the package name from "pkg@version".
 func packageName(pkgID string) string {
 	if idx := strings.LastIndexByte(pkgID, '@'); idx != -1 {
 		return pkgID[:idx]
