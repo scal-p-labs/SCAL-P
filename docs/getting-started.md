@@ -102,8 +102,9 @@ Now `scalp ci` exits 1 on violations — suitable for CI pipelines.
 | If you want to... | Go here |
 |-------------------|---------|
 | Understand trust scores | `docs/trust-score.md` |
-| Set up CI in GitHub Actions | `docs/scalp-ci.md` |
+| Set up CI in GitHub Actions with SARIF reports | `docs/scalp-ci.md` |
 | Verify SCAL-P's own binary | `docs/binary-verify.md` |
+| Verify staged npm package tarballs | `README.md` → Stage verify |
 | See every policy option | `docs/policy.md` |
 | Edit policy with autocomplete | Open `.scalp/policy.json` — `$schema` points to `.scalp/policy.schema.json` |
 
@@ -118,6 +119,7 @@ my-project/
 │   ├── policy.schema.json   ← JSON Schema for autocomplete
 │   ├── lockfile.json        ← auto-generated: SHA-512 hashes of packages
 │   ├── ci-report.json       ← CI report from last run
+│   ├── report.sarif         ← SARIF 2.1.0 report (with --sarif)
 │   ├── cache/
 │   │   └── trust.json       ← cached download counts and CVEs
 │   └── audit.log            ← every event, append-only

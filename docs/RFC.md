@@ -66,12 +66,19 @@ Existing tools don't solve the trust problem:
 scal-p/
 ├── cmd/scalp/main.go          # CLI entrypoint
 ├── internal/
-│   ├── cli/                   # Command routing, flags, config
+│   ├── cli/                   # Command routing, flags, config (install, audit, ci, verify, checksum, stage)
 │   ├── policy/                # Policy loading, evaluation, enforcement
 │   ├── lockfile/              # .scalp/lockfile.json management
-│   ├── hash/                  # SHA-512 directory hashing
+│   ├── hash/                  # SHA-512 hashing (directory, single file, raw bytes)
+│   ├── trust/                 # Trust score engine, cache, npm API client
+│   ├── reporter/              # JSON, Markdown, and SARIF 2.1.0 reports
 │   ├── audit/                 # NDJSON audit logger
-│   └── npm/                   # Package manager wrapper
+│   ├── pkgmanager/            # PackageManager interface + registry
+│   ├── npm/                   # npm adapter
+│   ├── pnpm/                  # pnpm adapter
+│   ├── yarn/                  # yarn (Berry) adapter
+│   ├── bun/                   # bun adapter
+│   └── version/               # build-time version injection
 ├── SCALP-RFC-v0.1.txt         # Original RFC (Portuguese)
 ├── .gitignore
 └── README.md
@@ -147,7 +154,7 @@ Thin wrapper around the package manager CLI.
 - `Flatten` — converts the nested tree into a flat list of `PackageNode` (name, version, resolved, integrity, path, depth)
 - `LocalPath` — resolves `node_modules/<name>` for a given package name
 
-For v0.1, only npm is supported for dependency tree resolution. pnpm and yarn work in passthrough mode (install only), but `--guarded` and `audit` require npm's JSON output format.
+For v0.1, only npm is supported for dependency tree resolution. Since v0.2, pnpm, yarn, and bun are fully supported.
 
 ## Architecture flow
 
@@ -185,16 +192,21 @@ Modes:
 - **denylist** — specific packages are blocked, everything else is allowed
 - **audit-only** — log everything, block nothing
 
-## Threat coverage (v0.1)
+## Threat coverage
 
-| Threat | Detection |
-|---|---|
-| Compromised account | Hash mismatch against lockfile |
-| Protestware / sabotage | Hash mismatch after audit |
-| Malicious new version | Blocked by policy (not in allowlist) |
-| Transitive supply chain | Recursive tree verification |
+| Threat | Detection | Added in |
+|---|---|---|
+| Compromised account | Hash mismatch against lockfile | v0.1 |
+| Protestware / sabotage | Hash mismatch after audit | v0.1 |
+| Malicious new version | Blocked by policy (not in allowlist) | v0.1 |
+| Transitive supply chain | Recursive tree verification | v0.1 |
+| Low-quality packages | Trust score < min_score | v0.2 |
+| Release artifact tampering | `scalp verify` binary hash check | v0.2 |
+| Staged package tampering | `scalp stage verify` tarball checksum | v0.3 |
+| Staged package identity bypass | Tarball package.json extraction vs --stage-id | v0.3 |
+| Staged package denylist evasion | Denylist check against extracted tarball name | v0.3 |
 
-Not covered in v0.1: typosquatting, dependency confusion, static analysis. These are v0.3+ targets.
+Not covered: typosquatting, dependency confusion, static analysis. These are v0.4+ targets.
 
 ## Threat Model
 
@@ -212,8 +224,9 @@ SCAL-P does NOT assume:
 
 ## What's next
 
-- **v0.2** — Sigstore/npm provenance integration, trust score, stricter CI mode
-- **v0.3** — Typosquatting detection, dependency confusion, security reports
+- **v0.2** — Sigstore/npm provenance integration, trust score, stricter CI mode, pnpm/yarn/bun support ✓
+- **v0.3 (current)** — SARIF 2.1.0 reports, GitHub Code Scanning integration, `scalp stage verify` for staged package tarballs, denylist bypass prevention, streaming hash verification
+- **v0.4+** — Typosquatting detection, dependency confusion, security reports, provenance-based `staged_only` policies
 - **v1.0** — SCAL-P Key Registry, IDE plugin, E2E tests
 
 ## Design principles
