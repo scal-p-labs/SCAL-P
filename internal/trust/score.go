@@ -280,7 +280,7 @@ func defaultFetchDownloads(ctx context.Context, apiURL, pkgName string) (int, er
 	if err != nil {
 		return 0, fmt.Errorf("fetch: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("unexpected status: %d", resp.StatusCode)
