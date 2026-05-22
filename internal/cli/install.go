@@ -86,9 +86,9 @@ func runInstall(ctx context.Context, args []string) error {
 		if pol.Trust.MinScore > 0 || pol.Trust.RequireHash {
 			lf, lfErr := lockfile.Load(ctx, ".scalp/lockfile.json")
 			if lfErr == nil {
-			scorer := trust.NewScorer(trust.DefaultCacheFile)
-			scorer.SetPM(pm.Name())
-			trustVs, tvErr := scorer.Evaluate(ctx, pol, nodes, &lf)
+				scorer := trust.NewScorer(trust.DefaultCacheFile)
+				scorer.SetPM(pm.Name())
+				trustVs, tvErr := scorer.Evaluate(ctx, pol, nodes, &lf)
 				if tvErr != nil {
 					slog.Warn("trust score", "err", tvErr)
 				} else {

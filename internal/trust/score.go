@@ -46,12 +46,12 @@ type inflightFetch struct {
 }
 
 type Scorer struct {
-	cachePath string
-	apiURL    string
-	pm        string
-	auditFunc func(ctx context.Context) map[string][]string
-	scores    []PackageScore
-	lastCVEs  map[string][]string
+	cachePath  string
+	apiURL     string
+	pm         string
+	auditFunc  func(ctx context.Context) map[string][]string
+	scores     []PackageScore
+	lastCVEs   map[string][]string
 	inflightMu sync.Mutex
 	inflight   map[string]*inflightFetch
 }
