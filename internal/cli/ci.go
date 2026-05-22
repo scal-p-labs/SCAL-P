@@ -56,7 +56,7 @@ func runCi(ctx context.Context, args []string) error {
 		slog.Warn("policy not found; allowing with audit")
 	}
 
-	if prType == "fork" {
+	if prType == "fork" && pol.Trust.Mode != policy.TrustAuditOnly {
 		pol.Trust.RequireHash = true
 		slog.Info("fork context: require_hash enforced, install scripts blocked")
 	}
