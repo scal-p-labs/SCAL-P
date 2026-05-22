@@ -78,26 +78,11 @@ func (a *Adapter) GetTree(ctx context.Context) (pkgmanager.DependencyTree, error
 		return pkgmanager.DependencyTree{}, err
 	}
 
-	nodes, err := ParseBunLockfile(ctx)
-	if err != nil {
-		slog.Warn("lockfile parse failed, falling back to CLI", "err", err)
-		return a.getTreeViaPm(ctx)
-	}
-
-	deps := make(map[string]pkgmanager.DependencyRef, len(nodes))
-	for _, node := range nodes {
-		deps[node.Name] = pkgmanager.DependencyRef{
-			Version:   node.Version,
-			Resolved:  node.Resolved,
-			Integrity: node.Integrity,
-			Path:      "node_modules/" + node.Name,
-		}
-	}
-	return pkgmanager.DependencyTree{
-		Name:         "bun-project",
-		Version:      "0.0",
-		Dependencies: deps,
-	}, nil
+	// Use bun pm ls --all to get the dependency tree. This preserves proper
+	// parent-child nesting and handles multiple versions of the same package,
+	// unlike the lockfile parser which returns a flat name-keyed map that
+	// cannot represent duplicate package names at different versions.
+	return a.getTreeViaPm(ctx)
 }
 
 func countTreeDepth(line string) int {
