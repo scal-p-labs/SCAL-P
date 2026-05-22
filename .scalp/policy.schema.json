@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/CarlosEduJs/SCAL-P/main/.scalp/policy.schema.json",
+  "$id": "https://raw.githubusercontent.com/scal-p-labs/SCAL-P/main/.scalp/policy.schema.json",
   "title": "SCAL-P Policy",
   "description": "Policy file for SCAL-P — controls dependency verification, trust scoring, and enforcement.",
   "type": "object",
