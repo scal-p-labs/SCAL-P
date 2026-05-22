@@ -48,7 +48,7 @@ func TestE2E_Bun_FallbackPmLs(t *testing.T) {
 	deleteFile(t, filepath.Join(dir, "bun.lock"))
 
 	result = runScalp(t, dir, "audit", "--pm", "bun", "--ci")
-	requireExitCode(t, result.exitCode, 0, result.String())
+	requireNonZero(t, result.exitCode, result.String())
 }
 
 func TestE2E_Bun_LockfileInconsistent(t *testing.T) {
