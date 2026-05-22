@@ -77,6 +77,9 @@ func (s *Scorer) SetAuditFunc(fn func(ctx context.Context) map[string][]string) 
 }
 
 func (s *Scorer) Evaluate(ctx context.Context, pol policy.Policy, nodes []pkgmanager.PackageNode, lf *lockfile.Lockfile) ([]policy.Violation, error) {
+	if pol.Trust.Mode == policy.TrustAuditOnly {
+		return nil, nil
+	}
 	if pol.Trust.MinScore <= 0 && !pol.Trust.RequireHash {
 		return nil, nil
 	}
