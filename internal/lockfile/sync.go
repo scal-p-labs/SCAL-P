@@ -66,6 +66,14 @@ func SyncWithTree(ctx context.Context, lf *Lockfile, tree pkgmanager.DependencyT
 		})
 	}
 
+	// Prune stale entries that no longer exist in the dependency tree.
+	for key := range lf.Packages {
+		if !seen[key] {
+			delete(lf.Packages, key)
+			slog.Debug("pruned stale lockfile entry", "package", key)
+		}
+	}
+
 	return events, nil
 }
 
