@@ -1,10 +1,41 @@
 package cli_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"scal-p/internal/cli"
 )
+
+func chdir(t *testing.T, dir string) string {
+	t.Helper()
+	prev, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir %s: %v", dir, err)
+	}
+	return prev
+}
+
+func checkFile(t *testing.T, dir string, path string) {
+	t.Helper()
+	full := filepath.Join(dir, path)
+	if _, err := os.Stat(full); err != nil {
+		t.Fatalf("expected %s to exist: %v", path, err)
+	}
+}
+
+func checkDir(t *testing.T, dir string, path string) {
+	t.Helper()
+	full := filepath.Join(dir, path)
+	info, err := os.Stat(full)
+	if err != nil {
+		t.Fatalf("expected %s to exist: %v", path, err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("expected %s to be a directory", path)
+	}
+}
 
 func TestRun_router(t *testing.T) {
 	t.Run("no args returns error", func(t *testing.T) {
@@ -49,6 +80,17 @@ func TestRun_router(t *testing.T) {
 		}
 	})
 
+	t.Run("init dispatches without error", func(t *testing.T) {
+		tmp := t.TempDir()
+		prev := chdir(t, tmp)
+		defer chdir(t, prev)
+
+		err := cli.Run([]string{"init"})
+		if err != nil {
+			t.Errorf("init should be routed: %v", err)
+		}
+	})
+
 	t.Run("install dispatches without error", func(t *testing.T) {
 		// This tests routing only; will fail if pm is not available
 		err := cli.Run([]string{"install", "--pm", "npm"})
@@ -63,6 +105,47 @@ func TestRun_router(t *testing.T) {
 		if err != nil && err.Error() == "unknown command: audit\n..." {
 			t.Errorf("audit should be routed, not unknown: %v", err)
 		}
+	})
+
+	t.Run("init creates .scalp directory and default files", func(t *testing.T) {
+		tmp := t.TempDir()
+		prev := chdir(t, tmp)
+		defer chdir(t, prev)
+
+		err := cli.Run([]string{"init"})
+		if err != nil {
+			t.Fatalf("init: %v", err)
+		}
+
+		checkFile(t, tmp, ".scalp/policy.json")
+		checkFile(t, tmp, ".scalp/policy.schema.json")
+		checkFile(t, tmp, ".scalp/lockfile.json")
+		checkFile(t, tmp, ".scalp/audit.log")
+		checkDir(t, tmp, ".scalp/cache")
+	})
+
+	t.Run("init --minimal creates minimal policy", func(t *testing.T) {
+		tmp := t.TempDir()
+		prev := chdir(t, tmp)
+		defer chdir(t, prev)
+
+		if err := cli.Run([]string{"init", "--minimal"}); err != nil {
+			t.Fatalf("init --minimal: %v", err)
+		}
+
+		checkFile(t, tmp, ".scalp/policy.json")
+	})
+
+	t.Run("init --strict creates strict policy", func(t *testing.T) {
+		tmp := t.TempDir()
+		prev := chdir(t, tmp)
+		defer chdir(t, prev)
+
+		if err := cli.Run([]string{"init", "--strict"}); err != nil {
+			t.Fatalf("init --strict: %v", err)
+		}
+
+		checkFile(t, tmp, ".scalp/policy.json")
 	})
 
 	t.Run("policy without subcommand returns error", func(t *testing.T) {

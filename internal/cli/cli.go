@@ -58,6 +58,8 @@ func RunContext(ctx context.Context, args []string) error {
 		err = runPolicy(ctx, args[1:])
 	case "stage":
 		err = runStage(ctx, args[1:])
+	case "init":
+		err = runInit(ctx, args[1:])
 	case "help", "-h", "--help":
 		return usageError()
 	default:
@@ -79,6 +81,7 @@ func usageText() string {
 
 Usage:
   scalp version
+  scalp init [--minimal | --strict]
   scalp ci [flags]
   scalp install [flags] [--] [pm args...]
   scalp audit [flags]
@@ -88,6 +91,7 @@ Usage:
   scalp stage verify --stage-id <pkg> [flags]
 
 Commands:
+  init          create .scalp/ with policy.json, schema, lockfile, and audit log
   ci            resolve, evaluate, install, audit — single CI step (always blocks)
   install       install packages via npm/pnpm with optional enforcement
   audit         validate lockfile vs node_modules
