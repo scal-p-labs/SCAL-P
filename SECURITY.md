@@ -1,11 +1,5 @@
 # Security Policy
 
-## Supported Versions
-
-| Version | Supported |
-|---------|-----------|
-| 0.x     | (PoC — active development) |
-
 ## Reporting a Vulnerability
 
 SCAL-P is a security tool — its own integrity matters as much as what it protects.
