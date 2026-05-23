@@ -52,7 +52,7 @@ func TestHasTraversal(t *testing.T) {
 	}{
 		{"node_modules/lodash", false},
 		{"node_modules/@scope/pkg", false},
-		{"/home/user/.pnpm/pkg@1/node_modules/pkg", false},
+		{"/home/user/.pnpm/pkg@1/node_modules/pkg", true},
 		{"node_modules/../../etc/passwd", true},
 		{"../foo", true},
 		{"foo/../bar", true},
@@ -60,8 +60,8 @@ func TestHasTraversal(t *testing.T) {
 		{"./foo", true},
 		{"foo/.", true},
 		{"", false},
-		{"/", false},
-		{"/etc/passwd", false},
+		{"/", true},
+		{"/etc/passwd", true},
 		{"node_modules/..", true},
 		{"node_modules/./foo", true},
 	}

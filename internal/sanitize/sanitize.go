@@ -49,8 +49,12 @@ func ValidatePMArgs(args []string) error {
 
 // HasTraversal checks if a filesystem path contains directory traversal
 // components like ".." or ".". Uses filepath.ToSlash for cross-platform
-// consistency.
+// consistency. Also rejects absolute paths since they bypass relative
+// path confinement.
 func HasTraversal(path string) bool {
+	if filepath.IsAbs(path) {
+		return true
+	}
 	for _, part := range strings.Split(filepath.ToSlash(path), "/") {
 		if part == ".." || part == "." {
 			return true

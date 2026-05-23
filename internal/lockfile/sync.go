@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"scal-p/internal/audit"
@@ -199,7 +201,10 @@ func resolvePkgDir(node pkgmanager.PackageNode, pm pkgmanager.PackageManager) st
 			"pkg", node.Name, "err", err)
 		return ""
 	}
-	if sanitize.HasTraversal(node.Path) {
+	// Reject paths with .. or . components, but allow absolute paths
+	// (pnpm reports real absolute paths from pnpm ls --json). Absolute
+	// paths are validated by the symlink confinement below.
+	if sanitize.HasTraversal(node.Path) && !filepath.IsAbs(node.Path) {
 		slog.Warn("package path contains traversal, ignoring",
 			"pkg", node.Name, "path", node.Path)
 		node.Path = ""
@@ -221,6 +226,25 @@ func resolvePkgDir(node pkgmanager.PackageNode, pm pkgmanager.PackageManager) st
 	if err != nil {
 		slog.Debug("resolve symlink", "path", path, "err", err)
 		return path
+	}
+	// Confine the resolved path to the project's node_modules directory.
+	// This ensures symlinks cannot escape to arbitrary filesystem locations.
+	wd, err := os.Getwd()
+	if err != nil {
+		slog.Warn("cannot determine working directory for symlink confinement",
+			"err", err)
+	} else {
+		resolvedAbs := realPath
+		if !filepath.IsAbs(resolvedAbs) {
+			resolvedAbs = filepath.Join(wd, resolvedAbs)
+		}
+		resolvedAbs = filepath.Clean(resolvedAbs)
+		allowedRoot := filepath.Join(wd, "node_modules")
+		if !strings.HasPrefix(resolvedAbs, allowedRoot) {
+			slog.Warn("resolved path outside node_modules, skipping",
+				"pkg", node.Name, "realPath", realPath)
+			return ""
+		}
 	}
 	return realPath
 }

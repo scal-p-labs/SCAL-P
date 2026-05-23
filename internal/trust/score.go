@@ -120,17 +120,18 @@ func (s *Scorer) Evaluate(ctx context.Context, pol policy.Policy, nodes []pkgman
 		for _, node := range scoreNodes {
 			key := fmt.Sprintf("%s@%s", node.Name, node.Version)
 
-			hash := scoreHash(node, lf)
-			maturity := ScoreMaturity(node.Version)
-			noCVEs := scoreCVEs(node.Name, node.Version, auditCVEs, cache)
+	failClosed := pol.Trust.FailClosed != nil && *pol.Trust.FailClosed
+	hash := scoreHash(node, lf)
+	maturity := ScoreMaturity(node.Version)
+	noCVEs := scoreCVEs(node.Name, node.Version, auditCVEs, cache, failClosed)
 
-			// Early skip: if max possible score is below min_score,
-			// don't bother fetching download data.
-			maxWithoutDownloads := hash + maturity + noCVEs
-			var downloads int
-			if maxWithoutDownloads+ptsMaxDownloads >= pol.Trust.MinScore {
-				downloads = s.scoreDownloadsCached(ctx, node.Name, cache)
-			}
+	// Early skip: if max possible score is below min_score,
+	// don't bother fetching download data.
+	maxWithoutDownloads := hash + maturity + noCVEs
+	var downloads int
+	if maxWithoutDownloads+ptsMaxDownloads >= pol.Trust.MinScore {
+		downloads = s.scoreDownloadsCached(ctx, node.Name, cache, failClosed)
+	}
 
 			total := maxWithoutDownloads + downloads
 
@@ -208,7 +209,7 @@ func parseVersion(v string) (major, minor, patch int) {
 // scoreDownloadsCached returns the download score for a package name.
 // It uses a dedup mechanism so concurrent calls for the same name
 // share a single HTTP fetch.
-func (s *Scorer) scoreDownloadsCached(ctx context.Context, pkgName string, cache *TrustCache) int {
+func (s *Scorer) scoreDownloadsCached(ctx context.Context, pkgName string, cache *TrustCache, failClosed bool) int {
 	entry, ok := cache.Get(pkgName)
 	if ok && !IsExpired(entry, DefaultTTL) {
 		return ScoreDownloadsByCount(entry.WeeklyDownloads)
@@ -248,6 +249,9 @@ func (s *Scorer) scoreDownloadsCached(ctx context.Context, pkgName string, cache
 	// All fetch attempts failed.
 	if ok {
 		return ScoreDownloadsByCount(entry.WeeklyDownloads)
+	}
+	if failClosed {
+		return 0
 	}
 	return ptsMaxDownloads / 2
 }
@@ -323,7 +327,7 @@ func ScoreDownloadsByCount(n int) int {
 	}
 }
 
-func scoreCVEs(pkgName, version string, auditCVEs map[string][]string, cache *TrustCache) int {
+func scoreCVEs(pkgName, version string, auditCVEs map[string][]string, cache *TrustCache, failClosed bool) int {
 	if auditCVEs != nil {
 		cves, ok := auditCVEs[pkgName]
 		if !ok {
@@ -354,6 +358,9 @@ func scoreCVEs(pkgName, version string, auditCVEs map[string][]string, cache *Tr
 		return ptsNoCVEs
 	}
 
+	if failClosed {
+		return 0
+	}
 	return ptsNoCVEs / 2
 }
 
