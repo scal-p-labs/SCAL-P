@@ -79,7 +79,7 @@ func TestDir(t *testing.T) {
 		}
 	})
 
-	t.Run("empty files are skipped", func(t *testing.T) {
+	t.Run("empty files are included", func(t *testing.T) {
 		dir := t.TempDir()
 		if err := os.WriteFile(filepath.Join(dir, "empty.txt"), []byte{}, 0o644); err != nil {
 			t.Fatal(err)
@@ -90,14 +90,17 @@ func TestDir(t *testing.T) {
 		}
 		emptyDir := t.TempDir()
 		emptyHash, _ := hash.Dir(context.Background(), emptyDir)
-		if h != emptyHash {
-			t.Error("empty file should produce same hash as empty dir")
+		if h == emptyHash {
+			t.Error("empty file should produce different hash from empty dir")
 		}
 	})
 
-	t.Run("subdirectories are skipped", func(t *testing.T) {
+	t.Run("recursive subdirectories are included", func(t *testing.T) {
 		dir := t.TempDir()
 		if err := os.MkdirAll(filepath.Join(dir, "subdir"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "subdir", "nested.txt"), []byte("nested content"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		h, err := hash.Dir(context.Background(), dir)
@@ -105,8 +108,32 @@ func TestDir(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		emptyHash, _ := hash.Dir(context.Background(), t.TempDir())
-		if h != emptyHash {
-			t.Error("subdir should be skipped")
+		if h == emptyHash {
+			t.Error("subdir with file should produce different hash from empty dir")
+		}
+	})
+
+	t.Run("deeply nested structure is deterministic", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(dir, "a", "b"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "a", "b", "c.txt"), []byte("deep"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "a", "x.txt"), []byte("shallow"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		h1, err := hash.Dir(context.Background(), dir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		h2, err := hash.Dir(context.Background(), dir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if h1 != h2 {
+			t.Error("hash should be deterministic for nested structure")
 		}
 	})
 

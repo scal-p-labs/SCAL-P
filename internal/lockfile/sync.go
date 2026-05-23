@@ -75,6 +75,8 @@ func SyncWithTree(ctx context.Context, lf *Lockfile, tree pkgmanager.DependencyT
 		}
 	}
 
+	lf.LockVersion = 2
+
 	return events, nil
 }
 
