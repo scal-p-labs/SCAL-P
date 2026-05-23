@@ -12,8 +12,8 @@ import (
 	"scal-p/internal/lockfile"
 	"scal-p/internal/pkgmanager"
 	"scal-p/internal/policy"
-	"scal-p/internal/sanitize"
 	"scal-p/internal/reporter"
+	"scal-p/internal/sanitize"
 	"scal-p/internal/trust"
 	"scal-p/internal/version"
 )
