@@ -11,7 +11,7 @@ import (
 
 func newLockfile(ts string) lockfile.Lockfile {
 	return lockfile.Lockfile{
-		LockVersion: 1,
+		LockVersion: 2,
 		GeneratedAt: ts,
 		Packages:    map[string]lockfile.LockEntry{},
 	}
@@ -31,8 +31,8 @@ func TestLoad(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if lf.LockVersion != 1 {
-			t.Errorf("expected LockVersion=1, got %d", lf.LockVersion)
+		if lf.LockVersion != 2 {
+			t.Errorf("expected LockVersion=2, got %d", lf.LockVersion)
 		}
 		if lf.Packages == nil {
 			t.Error("expected non-nil Packages map")
@@ -45,7 +45,7 @@ func TestLoad(t *testing.T) {
 	t.Run("valid json loads correctly", func(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "lockfile.json")
-		if err := os.WriteFile(path, []byte(`{"lockVersion":1,"packages":{"lodash@4.0":{"resolved":"url","integrity":"hash","verifiedAt":"now"}}}`), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(`{"lockVersion":2,"packages":{"lodash@4.0":{"resolved":"url","integrity":"hash","verifiedAt":"now"}}}`), 0o644); err != nil {
 			t.Fatal(err)
 		}
 
@@ -77,7 +77,7 @@ func TestLoad(t *testing.T) {
 	t.Run("nil packages normalized", func(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "lockfile.json")
-		if err := os.WriteFile(path, []byte(`{"lockVersion":1}`), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(`{"lockVersion":2}`), 0o644); err != nil {
 			t.Fatal(err)
 		}
 

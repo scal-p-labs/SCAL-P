@@ -28,7 +28,7 @@ func TestScoreHash(t *testing.T) {
 
 	t.Run("hash verified gives 30 pts", func(t *testing.T) {
 		lf := lockfile.Lockfile{
-			LockVersion: 1,
+			LockVersion: 2,
 			Packages: map[string]lockfile.LockEntry{
 				"lodash@4.17.21": {Integrity: "sha512-abc"},
 			},
@@ -48,7 +48,7 @@ func TestScoreHash(t *testing.T) {
 
 	t.Run("no hash gives violation due to low score", func(t *testing.T) {
 		lf := lockfile.Lockfile{
-			LockVersion: 1,
+			LockVersion: 2,
 			Packages:    map[string]lockfile.LockEntry{},
 		}
 		node := pkgmanager.PackageNode{Name: "unverified", Version: "0.5.0"}
@@ -72,7 +72,7 @@ func TestRequireHash(t *testing.T) {
 
 	t.Run("RequireHash blocks package without lockfile entry", func(t *testing.T) {
 		lf := lockfile.Lockfile{
-			LockVersion: 1,
+			LockVersion: 2,
 			Packages:    map[string]lockfile.LockEntry{},
 		}
 		node := pkgmanager.PackageNode{Name: "fresh", Version: "1.0.0"}
@@ -95,7 +95,7 @@ func TestRequireHash(t *testing.T) {
 
 	t.Run("RequireHash passes package with lockfile integrity", func(t *testing.T) {
 		lf := lockfile.Lockfile{
-			LockVersion: 1,
+			LockVersion: 2,
 			Packages: map[string]lockfile.LockEntry{
 				"safe@2.0.0": {Integrity: "sha512-xyz"},
 			},
@@ -114,7 +114,7 @@ func TestRequireHash(t *testing.T) {
 
 	t.Run("RequireHash+MinScore both enforced independently", func(t *testing.T) {
 		lf := lockfile.Lockfile{
-			LockVersion: 1,
+			LockVersion: 2,
 			Packages: map[string]lockfile.LockEntry{
 				"no-hash@1.0.0":   {},
 				"low-score@0.1.0": {Integrity: "sha512-abc"},
@@ -189,7 +189,7 @@ func TestEvaluate_offlineUnknownGetsHalfPoints(t *testing.T) {
 	scorer := testScorer(t, 0)
 
 	lf := lockfile.Lockfile{
-		LockVersion: 1,
+		LockVersion: 2,
 		Packages: map[string]lockfile.LockEntry{
 			"pkg@1.0.0": {Integrity: "sha512-abc"},
 		},
@@ -242,7 +242,7 @@ func TestEvaluate_multiplePackages(t *testing.T) {
 	scorer := testScorer(t, 0)
 
 	lf := lockfile.Lockfile{
-		LockVersion: 1,
+		LockVersion: 2,
 		Packages: map[string]lockfile.LockEntry{
 			"good@1.0.0": {Integrity: "sha512-abc"},
 		},
@@ -269,7 +269,7 @@ func TestEvaluate_withDownloadScore(t *testing.T) {
 	scorer := testScorer(t, 500000)
 
 	lf := lockfile.Lockfile{
-		LockVersion: 1,
+		LockVersion: 2,
 		Packages: map[string]lockfile.LockEntry{
 			"popular@1.0.0": {Integrity: "sha512-abc"},
 		},
@@ -291,7 +291,7 @@ func TestEvaluate_withDownloadScore(t *testing.T) {
 func TestCVEScoring(t *testing.T) {
 	t.Run("npm audit succeeds with CVEs gives 0 pts", func(t *testing.T) {
 		lf := lockfile.Lockfile{
-			LockVersion: 1,
+			LockVersion: 2,
 			Packages: map[string]lockfile.LockEntry{
 				"evil@1.0.0": {Integrity: "sha512-abc"},
 			},
@@ -319,7 +319,7 @@ func TestCVEScoring(t *testing.T) {
 
 	t.Run("npm audit succeeds without CVEs gives 15 pts", func(t *testing.T) {
 		lf := lockfile.Lockfile{
-			LockVersion: 1,
+			LockVersion: 2,
 			Packages: map[string]lockfile.LockEntry{
 				"clean@1.0.0": {Integrity: "sha512-abc"},
 			},
@@ -358,7 +358,7 @@ func TestCVEScoring(t *testing.T) {
 		}
 
 		lf := lockfile.Lockfile{
-			LockVersion: 1,
+			LockVersion: 2,
 			Packages: map[string]lockfile.LockEntry{
 				"pkg@1.0.0": {Integrity: "sha512-abc"},
 			},
@@ -386,7 +386,7 @@ func TestCVEScoring(t *testing.T) {
 
 	t.Run("no audit data, no cache gives 7 pts (half)", func(t *testing.T) {
 		lf := lockfile.Lockfile{
-			LockVersion: 1,
+			LockVersion: 2,
 			Packages: map[string]lockfile.LockEntry{
 				"unknown@1.0.0": {Integrity: "sha512-abc"},
 			},
@@ -435,7 +435,7 @@ func TestAdversarial_cachePoisoning(t *testing.T) {
 		}
 
 		lf := lockfile.Lockfile{
-			LockVersion: 1,
+			LockVersion: 2,
 			Packages: map[string]lockfile.LockEntry{
 				"old-pkg@1.0.0": {Integrity: "sha512-abc"},
 			},
@@ -481,7 +481,7 @@ func TestAdversarial_cachePoisoning(t *testing.T) {
 		}
 
 		lf := lockfile.Lockfile{
-			LockVersion: 1,
+			LockVersion: 2,
 			Packages: map[string]lockfile.LockEntry{
 				"poisoned@1.0.0": {Integrity: "sha512-abc"},
 			},
@@ -545,7 +545,7 @@ func TestViolationMessageContainsBreakdown(t *testing.T) {
 	scorer := testScorer(t, 0)
 
 	lf := lockfile.Lockfile{
-		LockVersion: 1,
+		LockVersion: 2,
 		Packages:    map[string]lockfile.LockEntry{},
 	}
 	node := pkgmanager.PackageNode{Name: "test", Version: "0.1.0"}

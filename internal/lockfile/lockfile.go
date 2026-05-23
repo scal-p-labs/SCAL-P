@@ -34,7 +34,7 @@ func Load(ctx context.Context, path string) (Lockfile, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return Lockfile{LockVersion: 1, Packages: map[string]LockEntry{}}, nil
+			return Lockfile{LockVersion: 2, Packages: map[string]LockEntry{}}, nil
 		}
 		return Lockfile{}, fmt.Errorf("read lockfile: %w", err)
 	}
@@ -46,7 +46,7 @@ func Load(ctx context.Context, path string) (Lockfile, error) {
 	if lf.Packages == nil {
 		lf.Packages = map[string]LockEntry{}
 	}
-	lf.LockVersion = cmp.Or(lf.LockVersion, 1)
+	lf.LockVersion = cmp.Or(lf.LockVersion, 2)
 	return lf, nil
 }
 
