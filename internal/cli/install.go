@@ -12,6 +12,7 @@ import (
 	"scal-p/internal/lockfile"
 	"scal-p/internal/pkgmanager"
 	"scal-p/internal/policy"
+	"scal-p/internal/sanitize"
 	"scal-p/internal/trust"
 )
 
@@ -29,6 +30,9 @@ func runInstall(ctx context.Context, args []string) error {
 	applyDefaults(cfg)
 
 	pmArgs := fs.Args()
+	if err := sanitize.ValidatePMArgs(pmArgs); err != nil {
+		return fmt.Errorf("invalid pm args: %w", err)
+	}
 	cfg.pm = strings.ToLower(cfg.pm)
 	if !pkgmanager.IsSupported(cfg.pm) {
 		return fmt.Errorf("unsupported package manager: %s", cfg.pm)

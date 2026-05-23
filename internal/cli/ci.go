@@ -12,6 +12,7 @@ import (
 	"scal-p/internal/lockfile"
 	"scal-p/internal/pkgmanager"
 	"scal-p/internal/policy"
+	"scal-p/internal/sanitize"
 	"scal-p/internal/reporter"
 	"scal-p/internal/trust"
 	"scal-p/internal/version"
@@ -31,6 +32,11 @@ func runCi(ctx context.Context, args []string) error {
 		return err
 	}
 	applyDefaults(cfg)
+
+	pmArgs := fs.Args()
+	if err := sanitize.ValidatePMArgs(pmArgs); err != nil {
+		return fmt.Errorf("invalid pm args: %w", err)
+	}
 
 	cfg.pm = strings.ToLower(cfg.pm)
 	if !pkgmanager.IsSupported(cfg.pm) {
@@ -61,7 +67,7 @@ func runCi(ctx context.Context, args []string) error {
 		slog.Info("fork context: require_hash enforced, install scripts blocked")
 	}
 
-	if err := pm.Resolve(ctx, fs.Args()...); err != nil {
+	if err := pm.Resolve(ctx, pmArgs...); err != nil {
 		return fmt.Errorf("resolve: %w", err)
 	}
 
@@ -104,7 +110,7 @@ func runCi(ctx context.Context, args []string) error {
 		return policy.ApplyEnforcement(policy.EnforceBlock, violations)
 	}
 
-	installArgs := fs.Args()
+	installArgs := pmArgs
 	if prType == "fork" || !*allowScripts {
 		installArgs = append([]string{"--ignore-scripts"}, installArgs...)
 	}
