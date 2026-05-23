@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -112,26 +113,31 @@ func runInit(ctx context.Context, args []string) error {
 	if err := os.WriteFile(policyPath, polJSON, 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", policyPath, err)
 	}
+	slog.Info("Created .scalp/policy.json")
 
 	schemaPath := filepath.Join(scalpDir, "policy.schema.json")
 	if err := os.WriteFile(schemaPath, []byte(defaultSchemaJSON), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", schemaPath, err)
 	}
+	slog.Info("Created .scalp/policy.schema.json")
 
 	lockfilePath := filepath.Join(scalpDir, "lockfile.json")
 	if err := os.WriteFile(lockfilePath, []byte("{}\n"), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", lockfilePath, err)
 	}
+	slog.Info("Created .scalp/lockfile.json")
 
 	auditPath := filepath.Join(scalpDir, "audit.log")
 	if err := os.WriteFile(auditPath, nil, 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", auditPath, err)
 	}
+	slog.Info("Created .scalp/audit.log")
 
 	cacheDir := filepath.Join(scalpDir, "cache")
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return fmt.Errorf("create %s: %w", cacheDir, err)
 	}
+	slog.Info("Created .scalp/cache/")
 
 	return nil
 }
