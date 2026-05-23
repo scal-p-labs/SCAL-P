@@ -11,6 +11,7 @@ import (
 
 	"scal-p/internal/ctxutil"
 	"scal-p/internal/pkgmanager"
+	"scal-p/internal/sanitize"
 )
 
 const (
@@ -120,6 +121,9 @@ func parseBunLockJSON(data []byte) ([]pkgmanager.PackageNode, error) {
 		pkgName, version := bunSplitNameVersion(nameVersion)
 		if pkgName == "" {
 			continue
+		}
+		if err := sanitize.SanitizePackageName(pkgName); err != nil {
+			return nil, fmt.Errorf("invalid package name %q: %w", pkgName, err)
 		}
 
 		var resolved string
@@ -273,6 +277,9 @@ func (s *bunParserState) startEntry(key string) error {
 	version := key[idx+1:]
 
 	if name == "" {
+		if err := sanitize.SanitizePackageName(key); err != nil {
+			return fmt.Errorf("invalid package name in key %q: %w", key, err)
+		}
 		s.current = &bunPkgEntry{name: key}
 		return nil
 	}
@@ -280,6 +287,10 @@ func (s *bunParserState) startEntry(key string) error {
 	// scoped package: leading @ is valid, but @ at any other position or a comma means malformed
 	if strings.Contains(name[1:], "@") || strings.ContainsAny(name, ",") {
 		return fmt.Errorf("malformed package key %q", key)
+	}
+
+	if err := sanitize.SanitizePackageName(name); err != nil {
+		return fmt.Errorf("invalid package name in key %q: %w", key, err)
 	}
 
 	s.current = &bunPkgEntry{

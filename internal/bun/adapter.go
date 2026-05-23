@@ -13,6 +13,7 @@ import (
 
 	"scal-p/internal/ctxutil"
 	"scal-p/internal/pkgmanager"
+	"scal-p/internal/sanitize"
 )
 
 type ExecFunc func(ctx context.Context, name string, arg ...string) *exec.Cmd
@@ -132,6 +133,11 @@ func parsePmLsTree(output string) (rootName string, deps map[string]bunPmEntry) 
 		if name == "" || version == "" {
 			continue
 		}
+		if err := sanitize.SanitizePackageName(name); err != nil {
+			slog.Warn("skipping package with invalid name from CLI",
+				"name", name, "err", err)
+			continue
+		}
 
 		parent := -1
 		for i := len(flat) - 1; i >= 0; i-- {
@@ -220,6 +226,11 @@ func convertBunDeps(deps map[string]bunPmEntry) map[string]pkgmanager.Dependency
 	}
 	result := make(map[string]pkgmanager.DependencyRef, len(deps))
 	for name, entry := range deps {
+		if err := sanitize.SanitizePackageName(name); err != nil {
+			slog.Warn("skipping package with invalid name from CLI",
+				"name", name, "err", err)
+			continue
+		}
 		result[name] = pkgmanager.DependencyRef{
 			Version:      entry.Version,
 			Resolved:     entry.Resolved,

@@ -499,16 +499,8 @@ func TestExtractName_pathTraversal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	nodes, err := npm.ParsePackageLock(context.Background(), path)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(nodes) != 0 {
-		t.Errorf("expected 0 nodes from path-traversal lockfile, got %d", len(nodes))
-		for _, n := range nodes {
-			if strings.Contains(n.Name, "..") || strings.Contains(n.Name, ".") {
-				t.Errorf("path traversal name not sanitized: %q", n.Name)
-			}
-		}
+	_, err := npm.ParsePackageLock(context.Background(), path)
+	if err == nil {
+		t.Fatal("expected error for path-traversal lockfile, got nil")
 	}
 }
