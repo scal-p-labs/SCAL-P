@@ -10,6 +10,7 @@ import (
 
 	"scal-p/internal/ctxutil"
 	"scal-p/internal/pkgmanager"
+	"scal-p/internal/sanitize"
 )
 
 // PackageLock represents npm's package-lock.json format.
@@ -57,9 +58,16 @@ func ParsePackageLock(ctx context.Context, path string) ([]pkgmanager.PackageNod
 			continue
 		}
 
+		if sanitize.HasTraversal(pkgPath) {
+			return nil, fmt.Errorf("package path %q contains traversal", pkgPath)
+		}
+
 		name := extractName(pkgPath)
-		if name == "" || isPathTraversal(name) {
+		if name == "" {
 			continue
+		}
+		if err := sanitize.SanitizePackageName(name); err != nil {
+			return nil, fmt.Errorf("invalid package name in %q: %w", pkgPath, err)
 		}
 		depth := countNodeModules(pkgPath)
 
@@ -106,16 +114,6 @@ func extractName(pkgPath string) string {
 	}
 	parts := strings.Split(trimmed, "/")
 	return parts[0]
-}
-
-// isPathTraversal checks if a package name could be a path traversal attack.
-func isPathTraversal(name string) bool {
-	for _, part := range strings.Split(name, "/") {
-		if part == ".." || part == "." {
-			return true
-		}
-	}
-	return false
 }
 
 func countNodeModules(pkgPath string) int {

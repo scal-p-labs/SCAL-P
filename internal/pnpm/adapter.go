@@ -14,6 +14,7 @@ import (
 
 	"scal-p/internal/ctxutil"
 	"scal-p/internal/pkgmanager"
+	"scal-p/internal/sanitize"
 )
 
 // ExecFunc matches the signature of exec.CommandContext.
@@ -132,6 +133,11 @@ func convertPnpmDeps(deps map[string]pnpmDependencyRef) map[string]pkgmanager.De
 	}
 	result := make(map[string]pkgmanager.DependencyRef, len(deps))
 	for name, ref := range deps {
+		if err := sanitize.SanitizePackageName(name); err != nil {
+			slog.Warn("skipping package with invalid name from CLI",
+				"name", name, "err", err)
+			continue
+		}
 		result[name] = pkgmanager.DependencyRef{
 			Version:      ref.Version,
 			Resolved:     ref.Resolved,
@@ -475,6 +481,10 @@ func parseLockfileKey(key string) (*lockfilePkgEntry, error) {
 
 	name = strings.ReplaceAll(name, "%2f", "/")
 	name = strings.ReplaceAll(name, "%2F", "/")
+
+	if err := sanitize.SanitizePackageName(name); err != nil {
+		return nil, fmt.Errorf("invalid package name in key %q: %w", key, err)
+	}
 
 	if strings.Contains(version, "/") {
 		return nil, fmt.Errorf("version %q contains slash in package key %q", version, key)

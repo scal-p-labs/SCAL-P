@@ -13,6 +13,7 @@ import (
 	"scal-p/internal/hash"
 	"scal-p/internal/pkgmanager"
 	"scal-p/internal/policy"
+	"scal-p/internal/sanitize"
 )
 
 // SyncWithTree updates the lockfile based on the dependency tree.
@@ -191,6 +192,16 @@ func VerifyAgainstTree(ctx context.Context, lf *Lockfile, tree pkgmanager.Depend
 // a symlink (node_modules/pkg -> .pnpm/pkg@v/node_modules/pkg), so we
 // resolve it to the real path before returning — hash.Dir rejects symlinks.
 func resolvePkgDir(node pkgmanager.PackageNode, pm pkgmanager.PackageManager) string {
+	if err := sanitize.SanitizePackageName(node.Name); err != nil {
+		slog.Warn("invalid package name, skipping",
+			"pkg", node.Name, "err", err)
+		return ""
+	}
+	if sanitize.HasTraversal(node.Path) {
+		slog.Warn("package path contains traversal, ignoring",
+			"pkg", node.Name, "path", node.Path)
+		node.Path = ""
+	}
 	path := node.Path
 	if path == "" || !hash.IsDir(path) {
 		path = pm.LocalPath(node.Name)

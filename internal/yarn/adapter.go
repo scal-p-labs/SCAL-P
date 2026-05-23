@@ -13,6 +13,7 @@ import (
 
 	"scal-p/internal/ctxutil"
 	"scal-p/internal/pkgmanager"
+	"scal-p/internal/sanitize"
 )
 
 type ExecFunc func(ctx context.Context, name string, arg ...string) *exec.Cmd
@@ -120,6 +121,11 @@ func (a *Adapter) getTreeViaList(ctx context.Context) (pkgmanager.DependencyTree
 			childName, childVer := splitYarnDescriptor(childEntry.Value)
 			if childName == "" {
 				childName, _ = splitYarnDescriptor(childKey)
+			}
+			if err := sanitize.SanitizePackageName(childName); err != nil {
+				slog.Warn("skipping package with invalid name from CLI",
+					"name", childName, "err", err)
+				continue
 			}
 			allDeps[childName] = pkgmanager.DependencyRef{
 				Version:      childVer,

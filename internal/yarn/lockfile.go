@@ -10,6 +10,7 @@ import (
 
 	"scal-p/internal/ctxutil"
 	"scal-p/internal/pkgmanager"
+	"scal-p/internal/sanitize"
 )
 
 const (
@@ -188,6 +189,10 @@ func (s *yarnParserState) startEntry(key string) error {
 
 			if name == "" || version == "" {
 				return fmt.Errorf("empty name or version in package key %q", key)
+			}
+
+			if err := sanitize.SanitizePackageName(name); err != nil {
+				return fmt.Errorf("invalid package name in key %q: %w", key, err)
 			}
 
 			s.current = &yarnPkgEntry{
