@@ -7,6 +7,12 @@ import (
 	"strings"
 )
 
+// ShellMetacharacters contains characters that are dangerous in shell
+// contexts. Even though Go's exec.CommandContext passes arguments as
+// separate argv elements (no shell), validating these provides
+// defense-in-depth.
+const ShellMetacharacters = ";|`$&<>()[]{}!\\"
+
 // SanitizePackageName validates a package name for safe filesystem use.
 // Package names come from lockfiles or CLI output and may contain path
 // traversal sequences like ".." or ".".
@@ -20,6 +26,22 @@ func SanitizePackageName(name string) error {
 		}
 		if part == ".." || part == "." {
 			return fmt.Errorf("package name %q contains path traversal component", name)
+		}
+	}
+	return nil
+}
+
+// ValidatePMArgs validates package manager arguments for shell
+// metacharacters and control characters. Go's exec.CommandContext is
+// inherently safe against shell injection (no shell), but this provides
+// defense-in-depth against unexpected argument handling.
+func ValidatePMArgs(args []string) error {
+	for _, arg := range args {
+		if strings.ContainsAny(arg, ShellMetacharacters) {
+			return fmt.Errorf("pmArg %q contains shell metacharacters", arg)
+		}
+		if strings.Contains(arg, "\n") || strings.Contains(arg, "\r") {
+			return fmt.Errorf("pmArg %q contains control characters", arg)
 		}
 	}
 	return nil

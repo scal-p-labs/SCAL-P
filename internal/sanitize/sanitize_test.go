@@ -72,3 +72,33 @@ func TestHasTraversal(t *testing.T) {
 		}
 	}
 }
+
+func TestValidatePMArgs(t *testing.T) {
+	tests := []struct {
+		args    []string
+		wantErr bool
+	}{
+		{[]string{}, false},
+		{[]string{"lodash"}, false},
+		{[]string{"lodash", "express"}, false},
+		{[]string{"@scope/pkg"}, false},
+		{[]string{"lodash@1.0.0"}, false},
+		{[]string{"lodash;rm", "-rf", "/"}, true},
+		{[]string{"pkg|something"}, true},
+		{[]string{"$(cat /etc/passwd)"}, true},
+		{[]string{"`command`"}, true},
+		{[]string{"arg1", "arg2&whoami"}, true},
+		{[]string{"pkg<>file"}, true},
+		{[]string{"lodash\n"}, true},
+		{[]string{"lodash\r"}, true},
+	}
+	for _, tt := range tests {
+		err := sanitize.ValidatePMArgs(tt.args)
+		if tt.wantErr && err == nil {
+			t.Errorf("ValidatePMArgs(%v) = nil, want error", tt.args)
+		}
+		if !tt.wantErr && err != nil {
+			t.Errorf("ValidatePMArgs(%v) = %v, want nil", tt.args, err)
+		}
+	}
+}
