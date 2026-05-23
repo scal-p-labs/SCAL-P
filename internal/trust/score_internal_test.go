@@ -118,7 +118,7 @@ func TestScoreCVEs_direct(t *testing.T) {
 		cache := &TrustCache{entries: map[string]CacheEntry{}}
 		auditCVEs := map[string][]string{pkgName: {"critical"}}
 
-		got := scoreCVEs(pkgName, version, auditCVEs, cache)
+		got := scoreCVEs(pkgName, version, auditCVEs, cache, true)
 		if got != 0 {
 			t.Errorf("expected 0, got %d", got)
 		}
@@ -133,7 +133,7 @@ func TestScoreCVEs_direct(t *testing.T) {
 		cache := &TrustCache{entries: map[string]CacheEntry{}}
 		auditCVEs := map[string][]string{pkgName: {}}
 
-		got := scoreCVEs(pkgName, version, auditCVEs, cache)
+		got := scoreCVEs(pkgName, version, auditCVEs, cache, true)
 		if got != ptsNoCVEs {
 			t.Errorf("expected %d, got %d", ptsNoCVEs, got)
 		}
@@ -153,7 +153,7 @@ func TestScoreCVEs_direct(t *testing.T) {
 			},
 		}}
 
-		got := scoreCVEs(pkgName, version, nil, cache)
+		got := scoreCVEs(pkgName, version, nil, cache, true)
 		if got != 0 {
 			t.Errorf("expected 0, got %d", got)
 		}
@@ -168,7 +168,7 @@ func TestScoreCVEs_direct(t *testing.T) {
 			},
 		}}
 
-		got := scoreCVEs(pkgName, version, nil, cache)
+		got := scoreCVEs(pkgName, version, nil, cache, true)
 		if got != ptsNoCVEs {
 			t.Errorf("expected %d, got %d", ptsNoCVEs, got)
 		}
@@ -179,7 +179,7 @@ func TestScoreCVEs_direct(t *testing.T) {
 			pkgName: {CVEs: []string{"GHSA-old"}},
 		}}
 
-		got := scoreCVEs(pkgName, version, nil, cache)
+		got := scoreCVEs(pkgName, version, nil, cache, true)
 		if got != 0 {
 			t.Errorf("expected 0, got %d", got)
 		}
@@ -190,16 +190,25 @@ func TestScoreCVEs_direct(t *testing.T) {
 			pkgName: {},
 		}}
 
-		got := scoreCVEs(pkgName, version, nil, cache)
+		got := scoreCVEs(pkgName, version, nil, cache, true)
 		if got != ptsNoCVEs {
 			t.Errorf("expected %d, got %d", ptsNoCVEs, got)
 		}
 	})
 
-	t.Run("no audit, no version CVEs, no entry gives 7 (half)", func(t *testing.T) {
+	t.Run("no audit, no version CVEs, no entry gives 0 with failClosed", func(t *testing.T) {
 		cache := &TrustCache{entries: map[string]CacheEntry{}}
 
-		got := scoreCVEs(pkgName, version, nil, cache)
+		got := scoreCVEs(pkgName, version, nil, cache, true)
+		if got != 0 {
+			t.Errorf("expected 0, got %d", got)
+		}
+	})
+
+	t.Run("no audit, no version CVEs, no entry gives half without failClosed", func(t *testing.T) {
+		cache := &TrustCache{entries: map[string]CacheEntry{}}
+
+		got := scoreCVEs(pkgName, version, nil, cache, false)
 		if got != ptsNoCVEs/2 {
 			t.Errorf("expected %d, got %d", ptsNoCVEs/2, got)
 		}
@@ -221,7 +230,7 @@ func TestScoreDownloadsCached_hit(t *testing.T) {
 	}
 	cache.SetDownloads("lodash", 50000)
 
-	got := s.scoreDownloadsCached(context.Background(), "lodash", cache)
+	got := s.scoreDownloadsCached(context.Background(), "lodash", cache, true)
 	if want := ScoreDownloadsByCount(50000); got != want {
 		t.Errorf("scoreDownloadsCached = %d, want %d", got, want)
 	}
@@ -247,8 +256,29 @@ func TestScoreDownloadsCached_fallbackOnFetchFail(t *testing.T) {
 	})
 
 	// Cache entry exists but is expired; fetch fails → fallback to stale value.
-	got := s.scoreDownloadsCached(context.Background(), "lodash", cache)
+	got := s.scoreDownloadsCached(context.Background(), "lodash", cache, true)
 	if want := ScoreDownloadsByCount(50000); got != want {
+		t.Errorf("scoreDownloadsCached = %d, want %d", got, want)
+	}
+}
+
+func TestScoreDownloadsCached_zeroOnFetchFailNoCache(t *testing.T) {
+	dir := t.TempDir()
+	cachePath := filepath.Join(dir, "trust.json")
+	s := NewScorer(cachePath)
+
+	restore := SetFetchDownloads(func(ctx context.Context, _, _ string) (int, error) {
+		return 0, os.ErrClosed
+	})
+	defer restore()
+
+	cache, err := LoadCache(cachePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := s.scoreDownloadsCached(context.Background(), "newpkg", cache, true)
+	if want := 0; got != want {
 		t.Errorf("scoreDownloadsCached = %d, want %d", got, want)
 	}
 }
@@ -268,7 +298,7 @@ func TestScoreDownloadsCached_halfOnFetchFailNoCache(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := s.scoreDownloadsCached(context.Background(), "newpkg", cache)
+	got := s.scoreDownloadsCached(context.Background(), "newpkg", cache, false)
 	if want := ptsMaxDownloads / 2; got != want {
 		t.Errorf("scoreDownloadsCached = %d, want %d", got, want)
 	}

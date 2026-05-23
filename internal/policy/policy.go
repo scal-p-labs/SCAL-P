@@ -24,6 +24,7 @@ type Trust struct {
 	Mode        string `json:"mode"`
 	MinScore    int    `json:"min_score,omitempty"`
 	RequireHash bool   `json:"require_hash,omitempty"`
+	FailClosed  *bool  `json:"fail_closed,omitempty"`
 }
 
 // Packages contains allow and deny rules.
@@ -114,4 +115,8 @@ func applyPolicyDefaults(pol *Policy) {
 	pol.Trust.Mode = cmp.Or(pol.Trust.Mode, TrustAuditOnly)
 	pol.Enforcement.OnViolation = cmp.Or(pol.Enforcement.OnViolation, EnforceWarn)
 	pol.Enforcement.DefaultMode = cmp.Or(pol.Enforcement.DefaultMode, ModePassthrough)
+	if pol.Trust.FailClosed == nil {
+		v := true
+		pol.Trust.FailClosed = &v
+	}
 }

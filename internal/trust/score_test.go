@@ -384,7 +384,7 @@ func TestCVEScoring(t *testing.T) {
 		}
 	})
 
-	t.Run("no audit data, no cache gives 7 pts (half)", func(t *testing.T) {
+	t.Run("no audit data, no cache gives 0 pts with failClosed", func(t *testing.T) {
 		lf := lockfile.Lockfile{
 			LockVersion: 2,
 			Packages: map[string]lockfile.LockEntry{
@@ -392,7 +392,8 @@ func TestCVEScoring(t *testing.T) {
 			},
 		}
 		node := pkgmanager.PackageNode{Name: "unknown", Version: "1.0.0"}
-		pol := policy.Policy{Trust: policy.Trust{MinScore: 70}}
+		trueVal := true
+		pol := policy.Policy{Trust: policy.Trust{MinScore: 70, FailClosed: &trueVal}}
 
 		s2 := trust.NewScorer(t.TempDir() + "/trust.json")
 		restore := trust.SetFetchDownloads(func(ctx context.Context, apiURL, pkgName string) (int, error) {
@@ -407,7 +408,7 @@ func TestCVEScoring(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		score := 30 + 15 + 10 + 7 // hash + maturity + dl half + cve half
+		score := 30 + 15 + 0 + 0 // hash + maturity + dl (fetch returns 0) + cve (failClosed=0)
 		if score >= 70 {
 			t.Fatal("test setup error: score too high for violation")
 		}
