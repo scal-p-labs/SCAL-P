@@ -47,18 +47,22 @@ changelog:
       - '^e2e:'
 
   groups:
+    - title: '‼️ Security Fixes'
+      regexp: '^sec(\(.+\))?!?:\s'
+      order: 0
+
     - title: '⚠️ Breaking Changes'
       regexp: '^.*!:.+'
-      order: 0
+      order: 1
 
     - title: '🚀 New Features'
       regexp: '^feat(\(.+\))?!?:\s'
-      order: 1
+      order: 2
 
     - title: '🐛 Bug Fixes'
       regexp: '^fix(\(.+\))?!?:\s'
-      order: 2
+      order: 3
 
     - title: '🧹 Refactoring'
       regexp: '^refactor(\(.+\))?!?:\s'
-      order: 3
+      order: 4
