@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -151,6 +152,8 @@ func runStageVerify(ctx context.Context, args []string) error {
 	return nil
 }
 
+const maxPackageJSONSize = 1 << 20 // 1 MB — well beyond any reasonable package.json
+
 func extractPkgNameFromTarball(r io.Reader) (string, error) {
 	gzr, err := gzip.NewReader(r)
 	if err != nil {
@@ -167,19 +170,26 @@ func extractPkgNameFromTarball(r io.Reader) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("read tar entry: %w", err)
 		}
-		if strings.HasSuffix(header.Name, "/package.json") || header.Name == "package/package.json" {
-			data, err := io.ReadAll(tr)
-			if err != nil {
-				return "", fmt.Errorf("read package.json: %w", err)
-			}
-			var meta struct {
-				Name string `json:"name"`
-			}
-			if err := json.Unmarshal(data, &meta); err != nil {
-				return "", fmt.Errorf("parse package.json: %w", err)
-			}
-			return meta.Name, nil
+		if !strings.HasSuffix(header.Name, "/package.json") {
+			continue
 		}
+		if !filepath.IsLocal(header.Name) {
+			return "", fmt.Errorf("non-local path in tarball entry: %s", header.Name)
+		}
+		data, err := io.ReadAll(io.LimitReader(tr, maxPackageJSONSize))
+		if err != nil {
+			return "", fmt.Errorf("read package.json: %w", err)
+		}
+		if len(data) >= maxPackageJSONSize {
+			return "", fmt.Errorf("package.json too large (limit %d bytes)", maxPackageJSONSize)
+		}
+		var meta struct {
+			Name string `json:"name"`
+		}
+		if err := json.Unmarshal(data, &meta); err != nil {
+			return "", fmt.Errorf("parse package.json: %w", err)
+		}
+		return meta.Name, nil
 	}
 
 	return "", nil
