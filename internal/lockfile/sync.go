@@ -93,6 +93,8 @@ func VerifyAgainstTree(ctx context.Context, lf *Lockfile, tree pkgmanager.Depend
 	now := time.Now().UTC().Format(time.RFC3339)
 	seen := map[string]bool{}
 
+	sigVerified := false
+
 	for _, node := range nodes {
 		key := fmt.Sprintf("%s@%s", node.Name, node.Version)
 		if seen[key] {
@@ -100,8 +102,21 @@ func VerifyAgainstTree(ctx context.Context, lf *Lockfile, tree pkgmanager.Depend
 		}
 		seen[key] = true
 		if err := ctxutil.Check(ctx); err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("flatten tree: %w", err)
 		}
+
+		// Verify lockfile signature once per run
+		if !sigVerified && lf.SigningKey != "" {
+			sigVerified = true
+			if err := VerifySignature(lf); err != nil {
+				violations = append(violations, policy.Violation{
+					PackageID: key,
+					Reason:    err.Error(),
+					Rule:      "lockfile_signature",
+				})
+			}
+		}
+
 		pkgDir := resolvePkgDir(node, pm)
 
 		entry, ok := lf.Packages[key]
