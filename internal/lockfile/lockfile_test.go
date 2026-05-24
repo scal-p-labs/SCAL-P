@@ -99,7 +99,7 @@ func TestSave(t *testing.T) {
 		lf := newLockfile("now")
 		lf.Packages["pkg@1.0"] = newEntry("url", "hash", "now")
 
-		if err := lockfile.Save(context.Background(), path, lf); err != nil {
+		if err := lockfile.Save(context.Background(), path, &lf); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
@@ -117,7 +117,7 @@ func TestSave(t *testing.T) {
 		path := filepath.Join(dir, "a", "b", "lockfile.json")
 		lf := newLockfile("now")
 
-		if err := lockfile.Save(context.Background(), path, lf); err != nil {
+		if err := lockfile.Save(context.Background(), path, &lf); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if _, err := os.Stat(path); err != nil {
