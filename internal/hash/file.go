@@ -22,7 +22,7 @@ func File(ctx context.Context, path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("open file %s: %w", path, err)
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck
 
 	h := sha512.New()
 	if _, err := io.Copy(h, f); err != nil {
