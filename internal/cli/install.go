@@ -131,7 +131,7 @@ func runInstall(ctx context.Context, args []string) error {
 		return err
 	}
 	lf.GeneratedAt = time.Now().UTC().Format(time.RFC3339)
-	if err := lockfile.Save(ctx, lfPath, lf); err != nil {
+	if err := lockfile.Save(ctx, lfPath, &lf); err != nil {
 		return err
 	}
 	if err := auditLogger.Log(ctx, hashEvents); err != nil {

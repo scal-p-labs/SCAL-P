@@ -136,7 +136,7 @@ func runCi(ctx context.Context, args []string) error {
 	}
 
 	lf.GeneratedAt = time.Now().UTC().Format(time.RFC3339)
-	if err := lockfile.Save(ctx, lfPath, lf); err != nil {
+	if err := lockfile.Save(ctx, lfPath, &lf); err != nil {
 		return fmt.Errorf("save lockfile: %w", err)
 	}
 

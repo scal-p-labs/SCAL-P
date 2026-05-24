@@ -58,12 +58,12 @@ func Load(ctx context.Context, path string) (Lockfile, error) {
 }
 
 // Save writes the lockfile to disk atomically, signing it if a signing key is available.
-func Save(ctx context.Context, path string, lf Lockfile) error {
+func Save(ctx context.Context, path string, lf *Lockfile) error {
 	if err := ctxutil.Check(ctx); err != nil {
 		return err
 	}
 
-	signLockfile(&lf, filepath.Dir(path))
+	signLockfile(lf, filepath.Dir(path))
 
 	data, err := json.MarshalIndent(lf, "", "  ")
 	if err != nil {
