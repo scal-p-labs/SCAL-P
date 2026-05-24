@@ -3,7 +3,7 @@
 node_modules/
 dist/
 .bin
-.scalp/audit.log
-.scalp/cache/
-.scalp/lockfile.json
 **/.scalp/
+!**/.scalp/policy.json
+!**/.scalp/policy.schema.json
+!**/.scalp/lockfile.json
