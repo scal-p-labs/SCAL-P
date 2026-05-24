@@ -240,7 +240,8 @@ func resolvePkgDir(node pkgmanager.PackageNode, pm pkgmanager.PackageManager) st
 		}
 		resolvedAbs = filepath.Clean(resolvedAbs)
 		allowedRoot := filepath.Join(wd, "node_modules")
-		if !strings.HasPrefix(resolvedAbs, allowedRoot) {
+		rel, err := filepath.Rel(allowedRoot, resolvedAbs)
+		if err != nil || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
 			slog.Warn("resolved path outside node_modules, skipping",
 				"pkg", node.Name, "realPath", realPath)
 			return ""
