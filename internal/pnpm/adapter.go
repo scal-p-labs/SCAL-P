@@ -446,8 +446,8 @@ func parseLockfileKey(key string) (*lockfilePkgEntry, error) {
 
 	// Strip YAML quoting (single or double) around the key.
 	// PNPM v9+ uses quoted keys when they contain @, e.g. '@scope/name@1.0.0'.
-	if (len(key) >= 2 && key[0] == '\'' && key[len(key)-1] == '\'') ||
-		(key[0] == '"' && key[len(key)-1] == '"') {
+	if len(key) >= 2 && ((key[0] == '\'' && key[len(key)-1] == '\'') ||
+		(key[0] == '"' && key[len(key)-1] == '"')) {
 		key = key[1 : len(key)-1]
 	}
 
