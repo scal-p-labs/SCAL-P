@@ -35,4 +35,3 @@ func FuzzParseLockfileYAML(f *testing.F) {
 		}
 	})
 }
-

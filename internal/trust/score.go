@@ -120,18 +120,18 @@ func (s *Scorer) Evaluate(ctx context.Context, pol policy.Policy, nodes []pkgman
 		for _, node := range scoreNodes {
 			key := fmt.Sprintf("%s@%s", node.Name, node.Version)
 
-	failClosed := pol.Trust.FailClosed != nil && *pol.Trust.FailClosed
-	hash := scoreHash(node, lf)
-	maturity := ScoreMaturity(node.Version)
-	noCVEs := scoreCVEs(node.Name, node.Version, auditCVEs, cache, failClosed)
+			failClosed := pol.Trust.FailClosed != nil && *pol.Trust.FailClosed
+			hash := scoreHash(node, lf)
+			maturity := ScoreMaturity(node.Version)
+			noCVEs := scoreCVEs(node.Name, node.Version, auditCVEs, cache, failClosed)
 
-	// Early skip: if max possible score is below min_score,
-	// don't bother fetching download data.
-	maxWithoutDownloads := hash + maturity + noCVEs
-	var downloads int
-	if maxWithoutDownloads+ptsMaxDownloads >= pol.Trust.MinScore {
-		downloads = s.scoreDownloadsCached(ctx, node.Name, cache, failClosed)
-	}
+			// Early skip: if max possible score is below min_score,
+			// don't bother fetching download data.
+			maxWithoutDownloads := hash + maturity + noCVEs
+			var downloads int
+			if maxWithoutDownloads+ptsMaxDownloads >= pol.Trust.MinScore {
+				downloads = s.scoreDownloadsCached(ctx, node.Name, cache, failClosed)
+			}
 
 			total := maxWithoutDownloads + downloads
 

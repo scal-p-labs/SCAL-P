@@ -1,4 +1,4 @@
-.PHONY: build test clean release-test fmt tidy help e2e
+.PHONY: build test clean release-test fmt tidy help e2e install-precommit precommit
 
 BINARY_NAME=scal-p
 BIN_DIR=.bin
@@ -57,6 +57,33 @@ clean:
 	rm -rf $(BIN_DIR)
 	rm -rf dist
 	@echo "Cleaned!"
+
+## precommit: run checks locally (mirrors CI lint + unit)
+precommit:
+	@echo "=== Format check ==="
+	@if [ -n "$$(go fmt ./...)" ]; then \
+		echo "FAIL: some files are not formatted. Run 'make fmt' to fix."; \
+		exit 1; \
+	fi
+	@echo "=== go vet ==="
+	go vet ./...
+	@echo "=== Build ==="
+	go build -o /dev/null $(MAIN_PATH)
+	@echo "=== Unit tests ==="
+	go test -count=1 ./...
+	@echo "All checks passed!"
+
+## install-precommit: install pre-commit hook at .git/hooks/pre-commit
+install-precommit:
+	@echo "Installing pre-commit hook..."
+	mkdir -p .git/hooks
+	{ \
+		echo '#!/bin/sh'; \
+		echo '# Pre-commit hook installed by "make install-precommit"'; \
+		echo 'make precommit'; \
+	} > .git/hooks/pre-commit
+	chmod +x .git/hooks/pre-commit
+	@echo "Pre-commit hook installed at .git/hooks/pre-commit"
 
 help:
 	@echo "Available commands:"
