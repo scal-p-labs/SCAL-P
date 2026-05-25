@@ -21,7 +21,7 @@ jobs:
         working-directory: testdata/ci-fixture
         run: npm install --package-lock-only
       - name: Test scalp-action
-        uses: scal-p-labs/scalp-action@9562c0e2ca6fcf9fa77b2cb38728c49f4c13ed90 # v0.4.0
+        uses: scal-p-labs/scalp-action@6519dede72b5a12df2aa8002908ddac5d83958a0 # v0.5.0
         with:
           version: latest
           pr-context: internal
