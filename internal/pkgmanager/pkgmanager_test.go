@@ -129,6 +129,66 @@ func TestFlatten(t *testing.T) {
 	})
 }
 
+func TestFlatten_SkipsEmptyVersion(t *testing.T) {
+	t.Run("skip packages with empty version (unmet optional deps)", func(t *testing.T) {
+		tree := pkgmanager.DependencyTree{
+			Name:    "root",
+			Version: "1.0",
+			Dependencies: map[string]pkgmanager.DependencyRef{
+				"lodash":              {Version: "4.17.21"},
+				"esbuild-linux-s390x": {Version: ""},
+				"esbuild-win32-x64":   {Version: ""},
+			},
+		}
+		nodes, err := pkgmanager.Flatten(tree)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(nodes) != 1 {
+			t.Fatalf("expected 1 node (lodash), got %d", len(nodes))
+		}
+		if nodes[0].Name != "lodash" {
+			t.Errorf("expected lodash, got %s", nodes[0].Name)
+		}
+	})
+
+	t.Run("skip nested empty version, traverse valid ones", func(t *testing.T) {
+		tree := pkgmanager.DependencyTree{
+			Name:    "root",
+			Version: "1.0",
+			Dependencies: map[string]pkgmanager.DependencyRef{
+				"react": {
+					Version: "19.0.0",
+					Dependencies: map[string]pkgmanager.DependencyRef{
+						"loose-envify":       {Version: "1.0.0"},
+						"react-dom-platform": {Version: ""},
+					},
+				},
+			},
+		}
+		nodes, err := pkgmanager.Flatten(tree)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(nodes) != 2 {
+			t.Fatalf("expected 2 nodes (react, loose-envify), got %d", len(nodes))
+		}
+		byName := map[string]pkgmanager.PackageNode{}
+		for _, n := range nodes {
+			byName[n.Name] = n
+		}
+		if _, ok := byName["react"]; !ok {
+			t.Error("missing react")
+		}
+		if _, ok := byName["loose-envify"]; !ok {
+			t.Error("missing loose-envify")
+		}
+		if _, ok := byName["react-dom-platform"]; ok {
+			t.Error("react-dom-platform should have been skipped")
+		}
+	})
+}
+
 func TestFlatten_ExceedsLimit(t *testing.T) {
 	t.Run("returns error when tree exceeds max nodes", func(t *testing.T) {
 		deps := map[string]pkgmanager.DependencyRef{}

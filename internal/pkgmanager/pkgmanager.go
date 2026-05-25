@@ -90,6 +90,10 @@ func Flatten(tree DependencyTree) ([]PackageNode, error) {
 				return nodes, fmt.Errorf("dependency tree exceeds %d nodes", maxFlattenNodes)
 			}
 
+			if ref.Version == "" {
+				continue
+			}
+
 			nodes = append(nodes, PackageNode{
 				Name:      name,
 				Version:   ref.Version,

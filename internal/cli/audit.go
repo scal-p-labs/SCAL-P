@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -83,9 +84,25 @@ func runAudit(ctx context.Context, args []string) error {
 		if flattenErr != nil {
 			slog.Warn("flatten tree", "err", flattenErr)
 		} else {
+			var filtered []pkgmanager.PackageNode
+			for _, n := range nodes {
+				if n.Path != "" {
+					if _, err := os.Stat(n.Path); err == nil {
+						filtered = append(filtered, n)
+						continue
+					}
+				}
+				if _, err := os.Stat(pm.LocalPath(n.Name)); err == nil {
+					filtered = append(filtered, n)
+					continue
+				}
+				slog.Debug("skipping uninstalled package in trust evaluation",
+					"pkg", n.Name, "version", n.Version)
+			}
+
 			scorer = trust.NewScorer(trust.DefaultCacheFile)
 			scorer.SetPM(pm.Name())
-			trustVs, tvErr := scorer.Evaluate(ctx, pol, nodes, &lf)
+			trustVs, tvErr := scorer.Evaluate(ctx, pol, filtered, &lf)
 			if tvErr != nil {
 				slog.Warn("trust score", "err", tvErr)
 			} else {
