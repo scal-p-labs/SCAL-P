@@ -8,6 +8,7 @@ If you find a vulnerability in SCAL-P itself, **do not open a public issue**. In
 
 - **GitHub**: use the private vulnerability reporting tool at  
   `https://github.com/carlsedujs/scal-p/security/advisories`
+- **Email**: `180333139+CarlosEduJs@users.noreply.github.com`
 
 To help us triage efficiently, include:
 
