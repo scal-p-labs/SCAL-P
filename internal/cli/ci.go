@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"crypto/sha512"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"os"
@@ -23,6 +25,8 @@ func runCi(ctx context.Context, args []string) error {
 	cfg := &cliConfig{}
 	fs.StringVar(&cfg.pm, "pm", "", "package manager (auto-detected from lockfile)")
 	fs.StringVar(&cfg.policyPath, "policy", ".scalp/policy.json", "policy path")
+	enforcement := fs.String("enforcement", "block", "enforcement mode: block, warn, or log")
+	checksum := fs.String("checksum", "", "expected SHA-512 checksum for the lockfile (format: sha512-<base64>)")
 	output := fs.String("output", ".scalp/ci-report.json", "report output path")
 	prContext := fs.String("pr-context", "fork", "PR context: fork (default) or internal")
 	allowScripts := fs.Bool("allow-scripts", false, "allow install scripts to run (internal only)")
@@ -46,6 +50,13 @@ func runCi(ctx context.Context, args []string) error {
 	prType := strings.ToLower(*prContext)
 	if prType != "fork" && prType != "internal" {
 		return fmt.Errorf("invalid PR context: %s (must be fork or internal)", *prContext)
+	}
+
+	enf := strings.ToLower(*enforcement)
+	switch enf {
+	case policy.EnforceBlock, policy.EnforceWarn, policy.EnforceLog:
+	default:
+		return fmt.Errorf("invalid enforcement mode: %s (must be block, warn, or log)", *enforcement)
 	}
 
 	pm, err := pkgmanager.Get(cfg.pm)
@@ -107,7 +118,7 @@ func runCi(ctx context.Context, args []string) error {
 				slog.Warn("sarif report", "err", err)
 			}
 		}
-		return policy.ApplyEnforcement(policy.EnforceBlock, violations)
+		return policy.ApplyEnforcement(enf, violations)
 	}
 
 	installArgs := pmArgs
@@ -140,6 +151,25 @@ func runCi(ctx context.Context, args []string) error {
 		return fmt.Errorf("save lockfile: %w", err)
 	}
 
+	if *checksum != "" {
+		lfData, err := os.ReadFile(lfPath)
+		if err != nil {
+			return fmt.Errorf("read lockfile for checksum: %w", err)
+		}
+		h := sha512.New()
+		h.Write(lfData)
+		actualHash := "sha512-" + base64.StdEncoding.EncodeToString(h.Sum(nil))
+		if actualHash != *checksum {
+			violations = append(violations, policy.Violation{
+				PackageID: "lockfile",
+				Reason:    fmt.Sprintf("lockfile_checksum_mismatch: expected %s, got %s", *checksum, actualHash),
+				Rule:      "lockfile_integrity",
+			})
+		} else {
+			slog.Info("lockfile checksum verified", "hash", actualHash)
+		}
+	}
+
 	auditViolations, auditEvents, err := lockfile.VerifyAgainstTree(ctx, &lf, depTree, pm)
 	if err != nil {
 		return fmt.Errorf("verify tree: %w", err)
@@ -163,7 +193,13 @@ func runCi(ctx context.Context, args []string) error {
 	}
 
 	if !passed {
-		return fmt.Errorf("ci failed: %d hash violations", len(auditViolations))
+		if err := policy.ApplyEnforcement(enf, auditViolations); err != nil {
+			return err
+		}
+	}
+
+	if len(allViolations) > 0 {
+		return policy.ApplyEnforcement(enf, allViolations)
 	}
 
 	return nil
