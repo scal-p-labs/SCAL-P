@@ -92,22 +92,6 @@ func runCi(ctx context.Context, args []string) error {
 		return fmt.Errorf("evaluate: %w", err)
 	}
 
-	if pol.Trust.MinScore > 0 || pol.Trust.RequireHash {
-		lf, lfErr := lockfile.Load(ctx, ".scalp/lockfile.json")
-		if lfErr != nil {
-			slog.Warn("trust score: no lockfile, using offline-only factors", "err", lfErr)
-		} else {
-			scorer := trust.NewScorer(trust.DefaultCacheFile)
-			scorer.SetPM(pm.Name())
-			trustVs, tvErr := scorer.Evaluate(ctx, pol, nodes, &lf)
-			if tvErr != nil {
-				slog.Warn("trust score", "err", tvErr)
-			} else {
-				violations = append(violations, trustVs...)
-			}
-		}
-	}
-
 	if len(violations) > 0 {
 		annotateViolations(violations)
 		if err := reporter.WriteReport(*output, false, violations, nil); err != nil {
@@ -149,6 +133,38 @@ func runCi(ctx context.Context, args []string) error {
 	lf.GeneratedAt = time.Now().UTC().Format(time.RFC3339)
 	if err := lockfile.Save(ctx, lfPath, &lf); err != nil {
 		return fmt.Errorf("save lockfile: %w", err)
+	}
+
+	if pol.Trust.MinScore > 0 || pol.Trust.RequireHash {
+		treeNodes, flattenErr := pkgmanager.Flatten(depTree)
+		if flattenErr != nil {
+			slog.Warn("flatten tree", "err", flattenErr)
+		} else {
+			var filtered []pkgmanager.PackageNode
+			for _, n := range treeNodes {
+				if n.Path != "" {
+					if _, err := os.Stat(n.Path); err == nil {
+						filtered = append(filtered, n)
+						continue
+					}
+				}
+				if _, err := os.Stat(pm.LocalPath(n.Name)); err == nil {
+					filtered = append(filtered, n)
+					continue
+				}
+				slog.Debug("skipping uninstalled package in trust evaluation",
+					"pkg", n.Name, "version", n.Version)
+			}
+
+			scorer := trust.NewScorer(trust.DefaultCacheFile)
+			scorer.SetPM(pm.Name())
+			trustVs, tvErr := scorer.Evaluate(ctx, pol, filtered, &lf)
+			if tvErr != nil {
+				slog.Warn("trust score", "err", tvErr)
+			} else {
+				violations = append(violations, trustVs...)
+			}
+		}
 	}
 
 	if *checksum != "" {
