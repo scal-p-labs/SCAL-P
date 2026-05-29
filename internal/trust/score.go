@@ -116,11 +116,13 @@ func (s *Scorer) Evaluate(ctx context.Context, pol policy.Policy, nodes []pkgman
 		s.lastCVEs = s.fetchAuditCVEs(ctx)
 		auditCVEs := s.lastCVEs
 		s.scores = nil
+		failClosed := pol.Trust.FailClosed != nil && *pol.Trust.FailClosed
+
+		s.prefetchDownloads(ctx, scoreNodes, cache, failClosed)
 
 		for _, node := range scoreNodes {
 			key := fmt.Sprintf("%s@%s", node.Name, node.Version)
 
-			failClosed := pol.Trust.FailClosed != nil && *pol.Trust.FailClosed
 			hash := scoreHash(node, lf)
 			maturity := ScoreMaturity(node.Version)
 			noCVEs := scoreCVEs(node.Name, node.Version, auditCVEs, cache, failClosed)
@@ -180,6 +182,45 @@ func scoreHash(node pkgmanager.PackageNode, lf *lockfile.Lockfile) int {
 		return ptsHashVerified
 	}
 	return 0
+}
+
+func (s *Scorer) prefetchDownloads(ctx context.Context, nodes []pkgmanager.PackageNode, cache *TrustCache, failClosed bool) {
+	const concurrency = 30
+
+	seen := map[string]bool{}
+	var names []string
+	for _, n := range nodes {
+		if seen[n.Name] {
+			continue
+		}
+		seen[n.Name] = true
+		if entry, ok := cache.Get(n.Name); !ok || IsExpired(entry, DefaultTTL) {
+			names = append(names, n.Name)
+		}
+	}
+	if len(names) == 0 {
+		return
+	}
+
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+
+	for _, name := range names {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(pkgName string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			downloads, err := s.fetchWeeklyDownloads(ctx, pkgName)
+			if err != nil {
+				slog.Debug("prefetch download failed", "pkg", pkgName, "err", err)
+				cache.SetDownloads(pkgName, 0)
+				return
+			}
+			cache.SetDownloads(pkgName, downloads)
+		}(name)
+	}
+	wg.Wait()
 }
 
 func ScoreMaturity(version string) int {
