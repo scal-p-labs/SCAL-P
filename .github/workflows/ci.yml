@@ -64,7 +64,7 @@ jobs:
       - name: Generate lockfile
         working-directory: testdata/ci-fixture
         run: npm install --package-lock-only
-      - uses: scal-p-labs/scalp-action@859d44532d9c0812c2e98ec7b157d0ce52fde82b # v0.6.1
+      - uses: scal-p-labs/scalp-action@7d7d8a3f9e7fd8cfde717731cf7f67883bb7d81f # v0.7.0
         id: scalp
         with:
           version: latest
